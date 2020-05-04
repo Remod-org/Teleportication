@@ -24,6 +24,7 @@ namespace Oxide.Plugins
         private SortedDictionary<string, Vector3> monSize = new SortedDictionary<string, Vector3>();
         private SortedDictionary<string, Vector3> cavePos  = new SortedDictionary<string, Vector3>();
 
+        private readonly Dictionary<ulong, TPTimer> TeleportTimers = new Dictionary<ulong, TPTimer>();
         private const string permRealTeleportUse = "realteleport.use";
         private const string permRealTeleportAdmin = "realteleport.admin";
 
@@ -35,6 +36,15 @@ namespace Oxide.Plugins
         private bool dolog = false;
 
         private readonly Plugin Friends, Clans, RustIO;
+
+        public class TPTimer
+        {
+            public Timer timer;
+            public float countdown;
+            public BasePlayer source;
+            public string targetName;
+            public Vector3 targetLocation;
+        }
 
         public class RTP_Point
         {
@@ -78,6 +88,24 @@ namespace Oxide.Plugins
             FindMonuments();
         }
 
+        public void HandleTimer(ulong userid, bool start = false)
+        {
+            if(start)
+            {
+                if(TeleportTimers.ContainsKey(userid))
+                {
+                    TeleportTimers[userid].timer = timer.Once(TeleportTimers[userid].countdown, () => { Teleport(TeleportTimers[userid].source, TeleportTimers[userid].targetLocation); });
+                }
+            }
+            else
+            {
+                if (TeleportTimers.ContainsKey(userid))
+                {
+                    TeleportTimers[userid].timer.Destroy();
+                }
+            }
+        }
+
         private void OnServerInitialized()
         {
             lang.RegisterMessages(new Dictionary<string, string>
@@ -99,7 +127,9 @@ namespace Oxide.Plugins
                 ["onmounted"] = "You cannot use /{0} while mounted.",
                 ["onswimming"] = "You cannot use /{0} while swimming.",
                 ["onwater"] = "You cannot use /{0} above water.",
-                ["safezone"] = "You cannot use /{0} from a safe zone."
+                ["safezone"] = "You cannot use /{0} from a safe zone.",
+                ["teleporting"] = "Teleporting to {0} in {1} seconds...",
+                ["tpcancelled"] = "Teleport cancelled!"
             }, this);
         }
         private void OnNewSave()
@@ -149,7 +179,7 @@ namespace Oxide.Plugins
             {
                 // List
             }
-            else if(args.Length == 2 && args[1] == "set")
+            else if(args.Length == 2 && args[1] == configData.Options.SetCommand)
             {
                 // Set home
             }
@@ -160,15 +190,16 @@ namespace Oxide.Plugins
         }
 
         [Command("town")]
-        private void CmdTownTeleport(IPlayer player, string command, string[] args)
+        private void CmdTownTeleport(IPlayer iplayer, string command, string[] args)
         {
+            var player = iplayer.Object as BasePlayer;
             if(args.Length > 0)
             {
-                if (args[0] == "set")
+                if (args[0] == configData.Options.SetCommand)
                 {
-                    if (!player.HasPermission(permRealTeleportAdmin)) { Message(player, "notauthorized"); return; }
-                    RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('town', '{(player.Object as BasePlayer).transform.position.ToString()}')");
-                    Message(player, "townset", (player.Object as BasePlayer).transform.position.ToString());
+                    if (!iplayer.HasPermission(permRealTeleportAdmin)) { Message(iplayer, "notauthorized"); return; }
+                    RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('town', '{player.transform.position.ToString()}')");
+                    Message(iplayer, "townset", player.transform.position.ToString());
                     return;
                 }
             }
@@ -179,54 +210,84 @@ namespace Oxide.Plugins
                     List<string> town = (List<string>) RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name='town'");
                     if (town != null)
                     {
-                        if (CanTeleport(player.Object as BasePlayer, town[0], "town"))
+                        if (CanTeleport(player, town[0], "town"))
                         {
-                            Teleport(player.Object as BasePlayer, StringToVector3(town[0]));
+                            if (!TeleportTimers.ContainsKey(player.userID))
+                            {
+                                TeleportTimers.Add(player.userID, new TPTimer() { countdown = configData.Town.CountDown, source = player, targetName = "town", targetLocation = StringToVector3(town[0]) });
+                                HandleTimer(player.userID, true);
+                                Message(iplayer, "teleporting", command, configData.Town.CountDown.ToString());
+                            }
+                            else if(TeleportTimers[player.userID].countdown == 0)
+                            {
+                                Teleport(player, StringToVector3(town[0]));
+                            }
                         }
                         break;
                     }
-                    Message(player, "townnotset");
+                    Message(iplayer, "townnotset");
                     break;
                 case "bandit":
                     List<string> bandit = (List<string>) RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name='bandit'");
                     if (bandit != null)
                     {
-                        if (CanTeleport(player.Object as BasePlayer, bandit[0], "bandit"))
+                        if (CanTeleport(player, bandit[0], "bandit"))
                         {
-                            Teleport(player.Object as BasePlayer, StringToVector3(bandit[0]));
+                            if (!TeleportTimers.ContainsKey(player.userID))
+                            {
+                                TeleportTimers.Add(player.userID, new TPTimer() { countdown = configData.Bandit.CountDown, source = player, targetName = "bandit", targetLocation = StringToVector3(bandit[0]) });
+                                HandleTimer(player.userID, true);
+                                Message(iplayer, "teleporting", command, configData.Bandit.CountDown.ToString());
+                            }
+                            else if(TeleportTimers[player.userID].countdown == 0)
+                            {
+                                Teleport(player, StringToVector3(bandit[0]));
+                            }
                         }
                         break;
                     }
-                    Message(player, "banditnotset");
+                    Message(iplayer, "banditnotset");
                     break;
                 case "outpost":
                     List<string> outpost = (List<string>) RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name='outpost'");
                     Puts($"Outpost location: {outpost[0]}");
                     if (outpost != null)
                     {
-                        if (CanTeleport(player.Object as BasePlayer, outpost[0], "outpost"))
+                        if (CanTeleport(player, outpost[0], "outpost"))
                         {
-                            Teleport(player.Object as BasePlayer, StringToVector3(outpost[0]));
+                            if (!TeleportTimers.ContainsKey(player.userID))
+                            {
+                                TeleportTimers.Add(player.userID, new TPTimer() { countdown = configData.Bandit.CountDown, source = player, targetName = "outpost", targetLocation = StringToVector3(outpost[0]) });
+                                HandleTimer(player.userID, true);
+                                Message(iplayer, "teleporting", command, configData.Outpost.CountDown.ToString());
+                            }
+                            else if(TeleportTimers[player.userID].countdown == 0)
+                            {
+                                Teleport(player, StringToVector3(outpost[0]));
+                            }
                         }
                         break;
                     }
-                    Message(player, "outpostnotset");
+                    Message(iplayer, "outpostnotset");
                     break;
             }
         }
 
         [Command("tpb")]
-        private void CmdTpb(IPlayer player, string command, string[] args)
+        private void CmdTpb(IPlayer iplayer, string command, string[] args)
         {
         }
 
         [Command("tpc")]
-        private void CmdTpc(IPlayer player, string command, string[] args)
+        private void CmdTpc(IPlayer iplayer, string command, string[] args)
         {
+            var player = iplayer.Object as BasePlayer;
+            HandleTimer(player.userID);
+            Message(iplayer, "tpcancelled");
         }
 
         [Command("tpr")]
-        private void CmdTpr(IPlayer player, string command, string[] args)
+        private void CmdTpr(IPlayer iplayer, string command, string[] args)
         {
         }
         #endregion
@@ -789,6 +850,11 @@ namespace Oxide.Plugins
         #endregion
 
         #region helpers
+        public void CountDown(BasePlayer player, string target)
+        {
+
+        }
+
         public static Vector3 StringToVector3(string sVector)
         {
             // Remove the parentheses
@@ -1002,6 +1068,7 @@ namespace Oxide.Plugins
         {
             //SaveLocation(player);
             //teleporting.Add(player.userID);
+            if (TeleportTimers.ContainsKey(player.userID)) TeleportTimers.Remove(player.userID);
 
             if(player.net?.connection != null) player.SetPlayerFlag(BasePlayer.PlayerFlags.ReceivingSnapshot, true);
 
@@ -1041,6 +1108,7 @@ namespace Oxide.Plugins
             {
                 Version = Version
             };
+            config.Options.SetCommand = "set";
             config.Options.DefaultMonumentSize = 120f;
             config.Options.CaveDistanceSmall = 40f;
             config.Options.CaveDistanceMedium = 60f;
@@ -1102,6 +1170,7 @@ namespace Oxide.Plugins
             public float CaveDistanceLarge;
             public float MinimumTemp;
             public float MaximumTemp;
+            public string SetCommand;
         }
 
         private class VIPSetting : CmdOptions
