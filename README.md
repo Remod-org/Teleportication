@@ -122,3 +122,10 @@ Despite some similarites, the configuration and data files from other teleport p
 RealTeleport uses SQLite for home, town, bandit, and outpost storage.  The file is saved in {oxidedata}/RealTeleport/realteleport.db.
 
 In-memory objects keep track of previous location for tpb, pending tpr/tpa, etc.  This could change as development progresses.
+
+### Status
+
+  1. CoolDown is not yet working
+  2. Economics is a pending feature (for bypassing CoolDown, etc.)
+  3. Various things may not be working, but this is being released for testing.
+
