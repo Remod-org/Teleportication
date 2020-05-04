@@ -117,7 +117,7 @@ A lot of the familiar commands from older teleport plugins are still there, with
 
 ### Details
 
-Data files from other teleport plugins are NOT compatible.
+Despite some similarites, the configuration and data files from other teleport plugins are NOT compatible.
 
 RealTeleport uses SQLite for home, town, bandit, and outpost storage.  The file is saved in {oxidedata}/RealTeleport/realteleport.db.
 
