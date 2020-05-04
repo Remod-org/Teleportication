@@ -117,6 +117,8 @@ A lot of the familiar commands from older teleport plugins are still there, with
 
 ### Details
 
+Data files from other teleport plugins are NOT compatible.
+
 RealTeleport uses SQLite for home, town, bandit, and outpost storage.  The file is saved in {oxidedata}/RealTeleport/realteleport.db.
 
-In-memory objects keep track of previous location for tpb, pending tpr/tpa, etc.
+In-memory objects keep track of previous location for tpb, pending tpr/tpa, etc.  This could change as development progresses.
