@@ -9,6 +9,7 @@ A lot of the familiar commands from older teleport plugins are still there, with
     - /sethome NAME is gone in favor of /home set NAME.
     - /home or /home list will show your currently set home names, locations, and lastused.
     - /home set NAME - Sets a home at player's current location
+    - /home NAME - Teleports you to your home with that NAME.
     - /town set - Sets town at the current location
     - /bandit set - Sets bandit at the current location
     - /outpost set - Sets outpost at the current location
