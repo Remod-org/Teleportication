@@ -10,6 +10,7 @@ A lot of the familiar commands from older teleport plugins are still there, with
     - /home or /home list will show your currently set home names, locations, and lastused.
     - /home list OTHERPLAYER will show a list of that player's currently set homes.
     - /home set NAME - Sets a home at player's current location
+    - /home remove NAME - Removes the home named NAME
     - /home NAME - Teleports you to your home with that NAME.
     - /town set - Sets town at the current location
     - /bandit set - Sets bandit at the current location
@@ -38,6 +39,7 @@ A lot of the familiar commands from older teleport plugins are still there, with
     "useFriends": false,
     "useTeams": false,
     "HomeRequireFoundation": true,
+    "HomeMinimumDistance": 10f,
     "HomeRemoveInvalid": true,
     "StrictFoundationCheck": true,
     "HonorBuildingPrivilege": true,
@@ -127,7 +129,6 @@ In-memory objects keep track of previous location for tpb, pending tpr/tpa, etc.
 ### Status
 
   1. CoolDown is not yet working
-  2. TC/HonorBuildingPrivilege is not yet being checked.
-  3. Economics is a pending feature (for bypassing CoolDown, etc.)
-  4. Various things may not be working, but this is being released for testing.
+  2. Economics is a pending feature (for bypassing CoolDown, etc.)
+  3. Various things may not be working, but this is being released for testing.
 
