@@ -1,13 +1,14 @@
-## RealTeleport (Work in progress)
+## Remod Teleport (Work in progress)
 Nextgen Teleport plugin for Rust
 
-Uses Friends, Clans, teams, RustIO
+Uses Friends, Clans, Rust teams, RustIO
 
-A lot of the familiar commands from older teleport plugins are still there, with some exceptions.
+A lot of the familiar commands from older teleport plugins are still there, with some exceptions.  This is where the similarites end.
 
 ### Commands
-    - /sethome NAME is gone in favor of /home set NAME.
+    - /sethome NAME is and alias for /home set NAME.
     - /home or /home list will show your currently set home names, locations, and lastused.
+    - /home list OTHERPLAYER will show a list of that player's currently set homes.
     - /home set NAME - Sets a home at player's current location
     - /home NAME - Teleports you to your home with that NAME.
     - /town set - Sets town at the current location
@@ -37,8 +38,8 @@ A lot of the familiar commands from older teleport plugins are still there, with
     "useFriends": false,
     "useTeams": false,
     "HomeRequireFoundation": true,
-    "StrictFoundationCheck": true,
     "HomeRemoveInvalid": true,
+    "StrictFoundationCheck": true,
     "HonorBuildingPrivilege": true,
     "HonorRelationships": false,
     "AutoGenBandit": true,
@@ -126,6 +127,7 @@ In-memory objects keep track of previous location for tpb, pending tpr/tpa, etc.
 ### Status
 
   1. CoolDown is not yet working
-  2. Economics is a pending feature (for bypassing CoolDown, etc.)
-  3. Various things may not be working, but this is being released for testing.
+  2. TC/HonorBuildingPrivilege is not yet being checked.
+  3. Economics is a pending feature (for bypassing CoolDown, etc.)
+  4. Various things may not be working, but this is being released for testing.
 

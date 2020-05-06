@@ -1,4 +1,4 @@
-#define DEBUG
+﻿//#define DEBUG
 using Oxide.Core;
 using Oxide.Core.Configuration;
 using Oxide.Core.Libraries.Covalence;
@@ -13,9 +13,9 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Real Teleport", "RFC1920", "1.0.0")]
+    [Info("Remod Teleport", "RFC1920", "1.0.0")]
     [Description("Nextgen Teleportation plugin")]
-    class RealTeleport : RustPlugin
+    class RemodTP : RustPlugin
     {
         #region vars
         //private SortedDictionary<string, RTP_Point> serverPoints = new SortedDictionary<string, RTP_Point>();
@@ -26,13 +26,13 @@ namespace Oxide.Plugins
         private SortedDictionary<string, Vector3> cavePos  = new SortedDictionary<string, Vector3>();
 
         private readonly Dictionary<ulong, TPTimer> TeleportTimers = new Dictionary<ulong, TPTimer>();
-        private const string permRealTeleportUse = "realteleport.use";
-        private const string permRealTeleportTPB = "realteleport.tpb";
-        private const string permRealTeleportTPR = "realteleport.tpr";
-        private const string permRealTeleportTown = "realteleport.town";
-        private const string permRealTeleportBandit = "realteleport.bandit";
-        private const string permRealTeleportOutpost = "realteleport.outpost";
-        private const string permRealTeleportAdmin = "realteleport.admin";
+        private const string permremodtpUse = "remodtp.use";
+        private const string permremodtpTPB = "remodtp.tpb";
+        private const string permremodtpTPR = "remodtp.tpr";
+        private const string permremodtpTown = "remodtp.town";
+        private const string permremodtpBandit = "remodtp.bandit";
+        private const string permremodtpOutpost = "remodtp.outpost";
+        private const string permremodtpAdmin = "remodtp.admin";
 
         private ConfigData configData;
         private SQLiteConnection sqlConnection;
@@ -72,9 +72,9 @@ namespace Oxide.Plugins
         private void Init()
         {
             Puts("Creating database connection for main thread.");
-            DynamicConfigFile dataFile = Interface.Oxide.DataFileSystem.GetDatafile(Name + "/realteleport");
+            DynamicConfigFile dataFile = Interface.Oxide.DataFileSystem.GetDatafile(Name + "/remodtp");
             dataFile.Save();
-            connStr = $"Data Source={Interface.Oxide.DataDirectory}{Path.DirectorySeparatorChar}{Name}{Path.DirectorySeparatorChar}realteleport.db";
+            connStr = $"Data Source={Interface.Oxide.DataDirectory}{Path.DirectorySeparatorChar}{Name}{Path.DirectorySeparatorChar}remodtp.db";
             sqlConnection = new SQLiteConnection(connStr);
             Puts("Opening...");
             sqlConnection.Open();
@@ -83,22 +83,24 @@ namespace Oxide.Plugins
             LoadData();
 
             AddCovalenceCommand("home", "CmdHomeTeleport");
+            AddCovalenceCommand("sethome", "CmdSetHome");
             AddCovalenceCommand("town", "CmdTownTeleport");
             AddCovalenceCommand("bandit", "CmdTownTeleport");
             AddCovalenceCommand("outpost", "CmdTownTeleport");
+            AddCovalenceCommand("tpa", "CmdTpa");
             AddCovalenceCommand("tpb", "CmdTpb");
             AddCovalenceCommand("tpc", "CmdTpc");
             AddCovalenceCommand("tpr", "CmdTpr");
 
-            permission.RegisterPermission(permRealTeleportUse, this);
-            permission.RegisterPermission(permRealTeleportTPB, this);
-            permission.RegisterPermission(permRealTeleportTPR, this);
-            permission.RegisterPermission(permRealTeleportTown, this);
-            permission.RegisterPermission(permRealTeleportBandit, this);
-            permission.RegisterPermission(permRealTeleportOutpost, this);
-            permission.RegisterPermission(permRealTeleportAdmin, this);
+            permission.RegisterPermission(permremodtpUse, this);
+            permission.RegisterPermission(permremodtpTPB, this);
+            permission.RegisterPermission(permremodtpTPR, this);
+            permission.RegisterPermission(permremodtpTown, this);
+            permission.RegisterPermission(permremodtpBandit, this);
+            permission.RegisterPermission(permremodtpOutpost, this);
+            permission.RegisterPermission(permremodtpAdmin, this);
 
-//            FindMonuments(); // Should only need on new save?
+            //FindMonuments(); // Should only need on new save?
         }
 
         private void OnServerInitialized()
@@ -109,7 +111,9 @@ namespace Oxide.Plugins
                 ["homesavail"] = "The following homes have been set:",
                 ["homesavailfor"] = "The following homes have been set by {0}:",
                 ["nohomes"] = "No homes have been set.",
+                ["hometooclose"] = "Too close to another home - minimum distance {0}",
                 ["homeset"] = "Home {0} has been set.",
+                ["homeremoved"] = "Home {0} has been removed.",
                 ["setblocked"] = "Home cannot be set here - {0}",
                 ["invalidhome"] = "Home invalid - {0}",
                 ["lastused"] = " Last used: {0} minutes ago",
@@ -123,6 +127,7 @@ namespace Oxide.Plugins
                 ["reqdenied"] = "Request to teleport to {0} was denied!",
                 ["reqaccepted"] = "Request to teleport to {0} was accepted!",
                 ["homemissing"] = "No such home...",
+                ["notowned"] = "No privileges at the target location!",
                 ["missingfoundation"] = "Foundation missing or offset.",
                 ["banditnotset"] = "Bandit location has not been set!",
                 ["outpostnotset"] = "Bandit location has not been set!",
@@ -187,16 +192,22 @@ namespace Oxide.Plugins
         #endregion
 
         #region commands
+        [Command("sethome")]
+        private void CmdSetHome(IPlayer iplayer, string command, string[] args)
+        {
+            if(args.Length == 1) CmdHomeTeleport(iplayer, "home", new string[] { "set", args[0] });
+        }
+
         [Command("home")]
         private void CmdHomeTeleport(IPlayer iplayer, string command, string[] args)
         {
             string debug = string.Join(",", args); Puts($"{debug}");
-            if (!iplayer.HasPermission(permRealTeleportUse)) { Message(iplayer, "notauthorized"); return; }
+            if (!iplayer.HasPermission(permremodtpUse)) { Message(iplayer, "notauthorized"); return; }
 
             var player = iplayer.Object as BasePlayer;
-            if(args.Length < 1 || (args.Length == 1 && args[0] == Lang("list")))
+            if(args.Length < 1 || (args.Length == 1 && args[0] == configData.Options.ListCommand))
             {
-                // List
+                // List homes
                 string available = Lang("homesavail") + "\n";
                 bool hashomes = false;
                 using (SQLiteConnection c = new SQLiteConnection(connStr))
@@ -229,26 +240,30 @@ namespace Oxide.Plugins
                     Message(iplayer, "nohomes");
                 }
             }
-            if(args.Length == 2 && args[0] == Lang("list") && configData.Options.HonorRelationships)
+            if(args.Length == 2 && (args[0] == configData.Options.ListCommand) && configData.Options.HonorRelationships)
             {
                 var target = BasePlayer.Find(args[1]);
                 if(IsFriend(player.userID, target.userID))
                 {
                     string available = Lang("homesavailfor", null, target.displayName) + "\n";
                     bool hashomes = false;
-                    using (SQLiteCommand q = new SQLiteCommand($"SELECT name, location, lastused FROM rtp_player WHERE userid='{target.userID}'", c))
+                    using (SQLiteConnection c = new SQLiteConnection(connStr))
                     {
-                        using (SQLiteDataReader home = q.ExecuteReader())
+                        c.Open();
+                        using (SQLiteCommand q = new SQLiteCommand($"SELECT name, location, lastused FROM rtp_player WHERE userid='{target.userID}'", c))
                         {
-                            while (home.Read())
+                            using (SQLiteDataReader home = q.ExecuteReader())
                             {
-                                string test = home.GetValue(0).ToString();
-                                if (test != "")
+                                while (home.Read())
                                 {
-                                    string timesince = Math.Floor(Time.realtimeSinceStartup / 60 - Convert.ToSingle(home.GetString(2)) / 60).ToString();
-                                    Puts($"Time since {timesince}");
-                                    available += test + ": " + home.GetString(1) + " " + Lang("lastused", null, timesince) + "\n";
-                                    hashomes = true;
+                                    string test = home.GetValue(0).ToString();
+                                    if (test != "")
+                                    {
+                                        string timesince = Math.Floor(Time.realtimeSinceStartup / 60 - Convert.ToSingle(home.GetString(2)) / 60).ToString();
+                                        Puts($"Time since {timesince}");
+                                        available += test + ": " + home.GetString(1) + " " + Lang("lastused", null, timesince) + "\n";
+                                        hashomes = true;
+                                    }
                                 }
                             }
                         }
@@ -270,8 +285,8 @@ namespace Oxide.Plugins
             else if(args.Length == 2 && args[0] == configData.Options.SetCommand)
             {
                 // Set home
-                string reason = "";
-                if (CanSetHome(player.transform.position, out reason))
+                string reason;
+                if (CanSetHome(player, player.transform.position, out reason))
                 {
                     string home = args[1];
                     RunUpdateQuery($"INSERT OR REPLACE INTO rtp_player VALUES('{player.userID}', '{home}', '{player.transform.position.ToString()}', '{Time.realtimeSinceStartup}', 0)");
@@ -282,9 +297,24 @@ namespace Oxide.Plugins
                     Message(iplayer, "setblocked", reason);
                 }
             }
+            else if(args.Length == 2 && args[0] == configData.Options.RemoveCommand)
+            {
+                // Remove home
+                string home = args[1];
+                List<string> found = (List<string>) RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'");
+                if (found != null)
+                {
+                    RunUpdateQuery($"DELETE FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'");
+                    Message(iplayer, "homeremoved", home);
+                }
+                else
+                {
+                    Message(iplayer, "homemissing");
+                }
+            }
             else if(args.Length == 1)
             {
-                // use an already set home
+                // Use an already set home
                 string home = args[0];
                 List<string> homes = (List<string>) RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'");
                 if(homes == null)
@@ -294,7 +324,7 @@ namespace Oxide.Plugins
                 }
 
                 string reason;
-                if(!CanSetHome(StringToVector3(homes[0]), out reason))
+                if(!CanSetHome(player, StringToVector3(homes[0]), out reason))
                 {
                     if(configData.Options.HomeRemoveInvalid)
                     {
@@ -327,9 +357,20 @@ namespace Oxide.Plugins
             {
                 if (args[0] == configData.Options.SetCommand)
                 {
-                    if (!iplayer.HasPermission(permRealTeleportAdmin)) { Message(iplayer, "notauthorized"); return; }
-                    RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('town', '{player.transform.position.ToString()}')");
-                    Message(iplayer, "townset", player.transform.position.ToString());
+                    if (!iplayer.HasPermission(permremodtpAdmin)) { Message(iplayer, "notauthorized"); return; }
+                    RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('{command}', '{player.transform.position.ToString()}')");
+                    switch (command)
+                    {
+                        case "town":
+                            Message(iplayer, "townset", player.transform.position.ToString());
+                            break;
+                        case "bandit":
+                            Message(iplayer, "banditset", player.transform.position.ToString());
+                            break;
+                        case "outpost":
+                            Message(iplayer, "outpostset", player.transform.position.ToString());
+                            break;
+                    }
                     return;
                 }
             }
@@ -337,7 +378,7 @@ namespace Oxide.Plugins
             switch (command)
             {
                 case "town":
-                    if (!iplayer.HasPermission(permRealTeleportTown)) { Message(iplayer, "notauthorized"); return; }
+                    if (!iplayer.HasPermission(permremodtpTown)) { Message(iplayer, "notauthorized"); return; }
                     List<string> town = (List<string>) RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name='town'");
                     if (town != null)
                     {
@@ -359,7 +400,7 @@ namespace Oxide.Plugins
                     Message(iplayer, "townnotset");
                     break;
                 case "bandit":
-                    if (!iplayer.HasPermission(permRealTeleportBandit)) { Message(iplayer, "notauthorized"); return; }
+                    if (!iplayer.HasPermission(permremodtpBandit)) { Message(iplayer, "notauthorized"); return; }
                     List<string> bandit = (List<string>) RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name='bandit'");
                     if (bandit != null)
                     {
@@ -381,7 +422,7 @@ namespace Oxide.Plugins
                     Message(iplayer, "banditnotset");
                     break;
                 case "outpost":
-                    if (!iplayer.HasPermission(permRealTeleportOutpost)) { Message(iplayer, "notauthorized"); return; }
+                    if (!iplayer.HasPermission(permremodtpOutpost)) { Message(iplayer, "notauthorized"); return; }
                     List<string> outpost = (List<string>) RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name='outpost'");
                     Puts($"Outpost location: {outpost[0]}");
                     if (outpost != null)
@@ -409,7 +450,7 @@ namespace Oxide.Plugins
         [Command("tpb")]
         private void CmdTpb(IPlayer iplayer, string command, string[] args)
         {
-            if (!iplayer.HasPermission(permRealTeleportTPB)) { Message(iplayer, "notauthorized"); return; }
+            if (!iplayer.HasPermission(permremodtpTPB)) { Message(iplayer, "notauthorized"); return; }
             var player = iplayer.Object as BasePlayer;
             if(SavedPoints.ContainsKey(player.userID))
             {
@@ -440,26 +481,45 @@ namespace Oxide.Plugins
         [Command("tpr")]
         private void CmdTpr(IPlayer iplayer, string command, string[] args)
         {
-            if (!iplayer.HasPermission(permRealTeleportTPR)) { Message(iplayer, "notauthorized"); return; }
+            if (!iplayer.HasPermission(permremodtpTPR)) { Message(iplayer, "notauthorized"); return; }
+            //configData.TPR.AutoAccept
+        }
+
+        [Command("tpa")]
+        private void CmdTpa(IPlayer iplayer, string command, string[] args)
+        {
+            //configData.TPR.AutoAccept
         }
         #endregion
 
         #region main
-        private bool CanSetHome(Vector3 position, out string reason)
+        private bool CanSetHome(BasePlayer player, Vector3 position, out string reason)
         {
-            reason = "";
+            reason = null;
             bool rtrn = false;
+            if (Vector3.Distance(player.transform.position, position) < configData.Options.HomeMinimumDistance)
+            {
+                reason = Lang("hometooclose", null, configData.Options.HomeMinimumDistance.ToString());
+                return false;
+            }
             if (configData.Options.HomeRequireFoundation)
             {
+#if DEBUG
+                Puts($"Checking for foundation at target {position.ToString()}");
+#endif
                 RaycastHit hitinfo;
                 if (Physics.Raycast(position, Vector3.down, out hitinfo, 0.1f, blockLayer))
                 {
                     var entity = hitinfo.GetEntity();
                     if (entity.PrefabName.Contains("foundation") || position.y < entity.WorldSpaceBounds().ToBounds().max.y)
                     {
-                        if (BlockCheck(entity, position))
+#if DEBUG
+                        Puts("  Found one.  Checking block perms, etc...");
+#endif
+                        rtrn = true;
+                        if (!BlockCheck(entity, player, position, out reason, configData.Options.HonorBuildingPrivilege))
                         {
-                            rtrn = true;
+                            rtrn = false;
                         }
                     }
                 }
@@ -469,76 +529,134 @@ namespace Oxide.Plugins
                     rtrn = false;
                 }
             }
+
             return rtrn;
         }
 
-        private bool BlockCheck(BaseEntity entity, Vector3 position)
+        private bool BlockCheck(BaseEntity entity, BasePlayer player, Vector3 position, out string reason, bool checktc = false)
         {
-            if(!configData.Options.StrictFoundationCheck)
-            {
-                return true;
-            }
+            reason = null;
 #if DEBUG
             Puts($"BlockCheck() called for {entity.ShortPrefabName}");
 #endif
-            Vector3 center = entity.CenterPoint();
+            if (configData.Options.StrictFoundationCheck)
+            {
+                Vector3 center = entity.CenterPoint();
 
-            List<BaseEntity> ents = new List<BaseEntity>();
-            Vis.Entities<BaseEntity>(center, 1.5f, ents);
-            foreach(BaseEntity wall in ents)
+                List<BaseEntity> ents = new List<BaseEntity>();
+                Vis.Entities<BaseEntity>(center, 1.5f, ents);
+                foreach (BaseEntity wall in ents)
+                {
+                    if (wall.name.Contains("external.high"))
+                    {
+#if DEBUG
+                        Puts($"    Found: {wall.name} @ center {center.ToString()}, pos {position.ToString()}");
+#endif
+                        reason = Lang("highwall");
+                        return false;
+                    }
+                }
+#if DEBUG
+                Puts($"  Checking block: {entity.name} @ center {center.ToString()}, pos: {position.ToString()}");
+#endif
+                if (entity.PrefabName.Contains("triangle.prefab"))
+                {
+                    if (Math.Abs(center.x - position.x) < 0.46f && Math.Abs(center.z - position.z) < 0.46f)
+                    {
+#if DEBUG
+                        Puts($"    Found: {entity.ShortPrefabName} @ center: {center.ToString()}, pos: {position.ToString()}");
+#endif
+                        if (checktc)
+                        {
+                            if (!CheckCupboardBlock(entity as BuildingBlock, player))
+                            {
+                                reason = Lang("notowned");
+                                return false;
+                            }
+                        }
+
+                        return true;
+                    }
+                }
+                else if (entity.PrefabName.Contains("foundation.prefab") || entity.PrefabName.Contains("floor.prefab"))
+                {
+                    if (Math.Abs(center.x - position.x) < 0.7f && Math.Abs(center.z - position.z) < 0.7f)
+                    {
+#if DEBUG
+                        Puts($"    Found: {entity.ShortPrefabName} @ center: {center.ToString()}, pos: {position.ToString()}");
+#endif
+                        if (checktc)
+                        {
+                            if (!CheckCupboardBlock(entity as BuildingBlock, player))
+                            {
+                                reason = Lang("notowned");
+                                return false;
+                            }
+                        }
+
+                        return true;
+                    }
+                }
+            }
+            else if (checktc)
             {
-                if(wall.name.Contains("external.high"))
+                if (!CheckCupboardBlock(entity as BuildingBlock, player))
                 {
 #if DEBUG
-                    Puts($"    Found: {wall.name} @ center {center.ToString()}, pos {position.ToString()}");
+                    Puts("No strict foundation check, but HonorBuildingPrivilege true - no perms");
 #endif
+                    reason = Lang("notowned");
                     return false;
-                }
-            }
-#if DEBUG
-            Puts($"  Checking block: {entity.name} @ center {center.ToString()}, pos: {position.ToString()}");
-#endif
-            if(entity.PrefabName.Contains("triangle.prefab"))
-            {
-                if(Math.Abs(center.x - position.x) < 0.45f && Math.Abs(center.z - position.z) < 0.45f)
-                {
-#if DEBUG
-                    Puts($"    Found: {entity.ShortPrefabName} @ center: {center.ToString()}, pos: {position.ToString()}");
-#endif
-                    return true;
-                }
-            }
-            else if(entity.PrefabName.Contains("foundation.prefab") || entity.PrefabName.Contains("floor.prefab"))
-            {
-                if(Math.Abs(center.x - position.x) < 0.7f && Math.Abs(center.z - position.z) < 0.7f)
-                {
-#if DEBUG
-                    Puts($"    Found: {entity.ShortPrefabName} @ center: {center.ToString()}, pos: {position.ToString()}");
-#endif
-                    return true;
                 }
             }
 
             return false;
         }
 
-        // Check that a building block is owned by/attached to a cupboard
-        private bool CheckCupboardBlock(BuildingBlock block)
+        // Check that a building block is owned by/attached to a cupboard and that the user has privileges
+        private bool CheckCupboardBlock(BuildingBlock block, BasePlayer player)
         {
             BuildingManager.Building building = block.GetBuilding();
 
-            if(building != null)
+            if (building != null)
             {
-                // cupboard overlap.  Block safe from decay.
-                if(building.GetDominatingBuildingPrivilege() == null)
+                if (building.GetDominatingBuildingPrivilege() == null)
                 {
                     return false;
                 }
 
-                return true;
+                if (building.buildingPrivileges == null)
+                {
+                    return false;
+                }
+#if DEBUG
+                Puts("Building priv not null, checking authorizedPlayers...");
+#endif
+                foreach (var priv in building.buildingPrivileges)
+                {
+                    foreach (var auth in priv.authorizedPlayers.Select(x => x.userid).ToArray())
+                    {
+                        // If the player is authed, or is a friend of the authed player, return true if HonorRelationships is enabled.
+                        // This should avoid TP to a home location where building priv has been lost (PVP).
+                        if (auth == player.userID || (configData.Options.HonorRelationships && IsFriend(player.userID, auth)))
+                        {
+#if DEBUG
+                            Puts($"Player {player.userID} has privileges...");
+#endif
+                            return true;
+                        }
+                    }
+                }
+                // No matching priv
+#if DEBUG
+                Puts("NO BUILDING PRIV");
+#endif
+                return false;
             }
-
-            return false;
+#if DEBUG
+            Puts("NO BUILDING AT ALL");
+#endif
+            return true;
         }
 
         private bool CanTeleport(BasePlayer player, string location, string type, bool requester = true)
@@ -1035,13 +1153,13 @@ namespace Oxide.Plugins
             {
                 var monname = entry.Key;
                 var monvector = entry.Value;
-                float realdistance = monSize[monname].z;
+                float remoddistance = monSize[monname].z;
                 monvector.y = pos.y;
                 float dist = Vector3.Distance(pos, monvector);
 #if DEBUG
-                Puts($"Checking {monname} dist: {dist.ToString()}, realdistance: {realdistance.ToString()}");
+                Puts($"Checking {monname} dist: {dist.ToString()}, remoddistance: {remoddistance.ToString()}");
 #endif
-                if(dist < realdistance)
+                if(dist < remoddistance)
                 {
 #if DEBUG
                     Puts($"Player in range of {monname}");
@@ -1059,19 +1177,19 @@ namespace Oxide.Plugins
             foreach(KeyValuePair<string, Vector3> entry in cavePos)
             {
                 var cavename = entry.Key;
-                float realdistance = 0f;
+                float remoddistance = 0f;
 
                 if(cavename.Contains("Small"))
                 {
-                    realdistance = configData.Options.CaveDistanceSmall;
+                    remoddistance = configData.Options.CaveDistanceSmall;
                 }
                 else if(cavename.Contains("Large"))
                 {
-                    realdistance = configData.Options.CaveDistanceLarge;
+                    remoddistance = configData.Options.CaveDistanceLarge;
                 }
                 else if(cavename.Contains("Medium"))
                 {
-                    realdistance = configData.Options.CaveDistanceMedium;
+                    remoddistance = configData.Options.CaveDistanceMedium;
                 }
 
                 var cavevector = entry.Value;
@@ -1079,7 +1197,7 @@ namespace Oxide.Plugins
                 var cpos = cavevector.ToString();
                 float dist = Vector3.Distance(pos, cavevector);
 
-                if(dist < realdistance)
+                if(dist < remoddistance)
                 {
 #if DEBUG
                     Puts($"NearCave: {cavename} nearby.");
@@ -1126,23 +1244,23 @@ namespace Oxide.Plugins
         void FindMonuments()
         {
             Vector3 extents = Vector3.zero;
-            float realWidth = 0f;
+            float remodWidth = 0f;
             string name = null;
             foreach (MonumentInfo monument in UnityEngine.Object.FindObjectsOfType<MonumentInfo>())
             {
                 if (monument.name.Contains("power_sub")) continue;
-                realWidth = 0f;
+                remodWidth = 0f;
                 name = null;
 
                 if(monument.name == "OilrigAI")
                 {
                     name = "Small Oilrig";
-                    realWidth = 100f;
+                    remodWidth = 100f;
                 }
                 else if(monument.name == "OilrigAI2")
                 {
                     name = "Large Oilrig";
-                    realWidth = 200f;
+                    remodWidth = 200f;
                 }
                 else
                 {
@@ -1156,9 +1274,9 @@ namespace Oxide.Plugins
 //                Puts($"Found {name}, extents {extents.ToString()}");
 //#endif
 
-                if(realWidth > 0f)
+                if(remodWidth > 0f)
                 {
-                    extents.z = realWidth;
+                    extents.z = remodWidth;
 //#if DEBUG
 //                    Puts($"  corrected to {extents.ToString()}");
 //#endif
@@ -1275,6 +1393,7 @@ namespace Oxide.Plugins
         // playerid = active player, ownerid = owner of camera, who may be offline
         bool IsFriend(ulong playerid, ulong ownerid)
         {
+            Puts($"Comparing player {playerid.ToString()} to owner {ownerid.ToString()}");
             if(configData.Options.useFriends && Friends != null)
             {
                 var fr = Friends?.CallHook("AreFriends", playerid, ownerid);
@@ -1377,6 +1496,9 @@ namespace Oxide.Plugins
                 Version = Version
             };
             config.Options.SetCommand = "set";
+            config.Options.ListCommand = "list";
+            config.Options.RemoveCommand = "remove";
+            config.Options.HomeMinimumDistance = 10f;
             config.Options.DefaultMonumentSize = 120f;
             config.Options.CaveDistanceSmall = 40f;
             config.Options.CaveDistanceMedium = 60f;
@@ -1435,6 +1557,7 @@ namespace Oxide.Plugins
             public bool HonorRelationships = false;
             public bool AutoGenBandit;
             public bool AutoGenOutpost;
+            public float HomeMinimumDistance;
             public float DefaultMonumentSize;
             public float CaveDistanceSmall;
             public float CaveDistanceMedium;
@@ -1442,6 +1565,8 @@ namespace Oxide.Plugins
             public float MinimumTemp;
             public float MaximumTemp;
             public string SetCommand;
+            public string ListCommand;
+            public string RemoveCommand;
         }
 
         private class VIPSetting : CmdOptions
