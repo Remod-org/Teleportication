@@ -1,4 +1,4 @@
-﻿//#define DEBUG
+﻿#define DEBUG
 using Oxide.Core;
 using Oxide.Core.Configuration;
 using Oxide.Core.Libraries.Covalence;
@@ -11,14 +11,18 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEngine;
 
+// TODO:
+//    Cooldown
+//    Economics for bypass
+//    Auto TPA
+
 namespace Oxide.Plugins
 {
-    [Info("Remod Teleport", "RFC1920", "1.0.0")]
+    [Info("Teleportication", "RFC1920", "1.0.1")]
     [Description("Nextgen Teleportation plugin")]
-    class RemodTP : RustPlugin
+    class Teleportication : RustPlugin
     {
         #region vars
-        //private SortedDictionary<string, RTP_Point> serverPoints = new SortedDictionary<string, RTP_Point>();
         private SortedDictionary<ulong, Vector3> SavedPoints = new SortedDictionary<ulong, Vector3>();
         private SortedDictionary<ulong, ulong> TPRRequests = new SortedDictionary<ulong, ulong>();
         private SortedDictionary<string, Vector3> monPos  = new SortedDictionary<string, Vector3>();
@@ -26,13 +30,13 @@ namespace Oxide.Plugins
         private SortedDictionary<string, Vector3> cavePos  = new SortedDictionary<string, Vector3>();
 
         private readonly Dictionary<ulong, TPTimer> TeleportTimers = new Dictionary<ulong, TPTimer>();
-        private const string permremodtpUse = "remodtp.use";
-        private const string permremodtpTPB = "remodtp.tpb";
-        private const string permremodtpTPR = "remodtp.tpr";
-        private const string permremodtpTown = "remodtp.town";
-        private const string permremodtpBandit = "remodtp.bandit";
-        private const string permremodtpOutpost = "remodtp.outpost";
-        private const string permremodtpAdmin = "remodtp.admin";
+        private const string permTP_Use = "teleportication.use";
+        private const string permTP_TPB = "teleportication.tpb";
+        private const string permTP_TPR = "teleportication.tpr";
+        private const string permTP_Town = "teleportication.town";
+        private const string permTP_Bandit = "teleportication.bandit";
+        private const string permTP_Outpost = "teleportication.outpost";
+        private const string permTP_Admin = "teleportication.admin";
 
         private ConfigData configData;
         private SQLiteConnection sqlConnection;
@@ -42,7 +46,6 @@ namespace Oxide.Plugins
         private bool dolog = false;
 
         private readonly Plugin Friends, Clans, RustIO, Economics;
-
         private readonly int blockLayer = LayerMask.GetMask("Construction");
 
         public class TPTimer
@@ -52,14 +55,6 @@ namespace Oxide.Plugins
             public BasePlayer source;
             public string targetName;
             public Vector3 targetLocation;
-        }
-
-        public class RTP_Point
-        {
-            public string userid;
-            public Vector3 location;
-            public Time lastused;
-            public Time nextused;
         }
         #endregion
 
@@ -71,10 +66,10 @@ namespace Oxide.Plugins
         #region init
         private void Init()
         {
-            Puts("Creating database connection for main thread.");
-            DynamicConfigFile dataFile = Interface.Oxide.DataFileSystem.GetDatafile(Name + "/remodtp");
+            DynamicConfigFile dataFile = Interface.Oxide.DataFileSystem.GetDatafile(Name + "/teleportication");
             dataFile.Save();
-            connStr = $"Data Source={Interface.Oxide.DataDirectory}{Path.DirectorySeparatorChar}{Name}{Path.DirectorySeparatorChar}remodtp.db";
+            Puts("Creating database connection for main thread.");
+            connStr = $"Data Source={Interface.Oxide.DataDirectory}{Path.DirectorySeparatorChar}{Name}{Path.DirectorySeparatorChar}teleportication.db";
             sqlConnection = new SQLiteConnection(connStr);
             Puts("Opening...");
             sqlConnection.Open();
@@ -92,15 +87,15 @@ namespace Oxide.Plugins
             AddCovalenceCommand("tpc", "CmdTpc");
             AddCovalenceCommand("tpr", "CmdTpr");
 
-            permission.RegisterPermission(permremodtpUse, this);
-            permission.RegisterPermission(permremodtpTPB, this);
-            permission.RegisterPermission(permremodtpTPR, this);
-            permission.RegisterPermission(permremodtpTown, this);
-            permission.RegisterPermission(permremodtpBandit, this);
-            permission.RegisterPermission(permremodtpOutpost, this);
-            permission.RegisterPermission(permremodtpAdmin, this);
+            permission.RegisterPermission(permTP_Use, this);
+            permission.RegisterPermission(permTP_TPB, this);
+            permission.RegisterPermission(permTP_TPR, this);
+            permission.RegisterPermission(permTP_Town, this);
+            permission.RegisterPermission(permTP_Bandit, this);
+            permission.RegisterPermission(permTP_Outpost, this);
+            permission.RegisterPermission(permTP_Admin, this);
 
-            //FindMonuments(); // Should only need on new save?
+            FindMonuments();
         }
 
         private void OnServerInitialized()
@@ -129,9 +124,7 @@ namespace Oxide.Plugins
                 ["homemissing"] = "No such home...",
                 ["notowned"] = "No privileges at the target location!",
                 ["missingfoundation"] = "Foundation missing or offset.",
-                ["banditnotset"] = "Bandit location has not been set!",
-                ["outpostnotset"] = "Bandit location has not been set!",
-                ["townnotset"] = "Town location has not been set!",
+                ["locationnotset"] = "{0} location has not been set!",
                 ["townset"] = "Town location has been set to {0}!",
                 ["cavetooclose"] = "You cannot use /{0} so close to a cave.",
                 ["montooclose"] = "You cannot use /{0} so close to {1}.",
@@ -177,14 +170,6 @@ namespace Oxide.Plugins
             if (!found) CreateOrClearTables(true);
         }
 
-//        public class RTP_Point
-//        {
-//            public string userid;
-//            public Vector3 location;
-//            public Time lastused;
-//            public Time nextused;
-//        }
-
         private void DoLog(string message, int indent = 0)
         {
             if (dolog) LogToFile(logfilename, "".PadLeft(indent, ' ') + message, this);
@@ -202,7 +187,7 @@ namespace Oxide.Plugins
         private void CmdHomeTeleport(IPlayer iplayer, string command, string[] args)
         {
             string debug = string.Join(",", args); Puts($"{debug}");
-            if (!iplayer.HasPermission(permremodtpUse)) { Message(iplayer, "notauthorized"); return; }
+            if (!iplayer.HasPermission(permTP_Use)) { Message(iplayer, "notauthorized"); return; }
 
             var player = iplayer.Object as BasePlayer;
             if(args.Length < 1 || (args.Length == 1 && args[0] == configData.Options.ListCommand))
@@ -223,7 +208,7 @@ namespace Oxide.Plugins
                                 if (test != "")
                                 {
                                     string timesince = Math.Floor(Time.realtimeSinceStartup / 60 - Convert.ToSingle(home.GetString(2)) / 60).ToString();
-                                    Puts($"Time since {timesince}");
+                                    //Puts($"Time since {timesince}");
                                     available += test + ": " + home.GetString(1) + " " + Lang("lastused", null, timesince) + "\n";
                                     hashomes = true;
                                 }
@@ -260,7 +245,7 @@ namespace Oxide.Plugins
                                     if (test != "")
                                     {
                                         string timesince = Math.Floor(Time.realtimeSinceStartup / 60 - Convert.ToSingle(home.GetString(2)) / 60).ToString();
-                                        Puts($"Time since {timesince}");
+                                        //Puts($"Time since {timesince}");
                                         available += test + ": " + home.GetString(1) + " " + Lang("lastused", null, timesince) + "\n";
                                         hashomes = true;
                                     }
@@ -333,13 +318,13 @@ namespace Oxide.Plugins
                     Message(iplayer, "invalidhome", reason);
                     return;
                 }
-                if (CanTeleport(player, homes[0], "home"))
+                if (CanTeleport(player, homes[0], "Home"))
                 {
                     if (!TeleportTimers.ContainsKey(player.userID))
                     {
-                        TeleportTimers.Add(player.userID, new TPTimer() { countdown = configData.Home.CountDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
+                        TeleportTimers.Add(player.userID, new TPTimer() { countdown = configData.Types["Home"].CountDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
                         HandleTimer(player.userID, true);
-                        Message(iplayer, "teleportinghome", home, configData.Home.CountDown.ToString());
+                        Message(iplayer, "teleportinghome", home, configData.Types["Home"].CountDown.ToString());
                     }
                     else if (TeleportTimers[player.userID].countdown == 0)
                     {
@@ -357,7 +342,7 @@ namespace Oxide.Plugins
             {
                 if (args[0] == configData.Options.SetCommand)
                 {
-                    if (!iplayer.HasPermission(permremodtpAdmin)) { Message(iplayer, "notauthorized"); return; }
+                    if (!iplayer.HasPermission(permTP_Admin)) { Message(iplayer, "notauthorized"); return; }
                     RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('{command}', '{player.transform.position.ToString()}')");
                     switch (command)
                     {
@@ -378,17 +363,17 @@ namespace Oxide.Plugins
             switch (command)
             {
                 case "town":
-                    if (!iplayer.HasPermission(permremodtpTown)) { Message(iplayer, "notauthorized"); return; }
+                    if (!iplayer.HasPermission(permTP_Town)) { Message(iplayer, "notauthorized"); return; }
                     List<string> town = (List<string>) RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name='town'");
                     if (town != null)
                     {
-                        if (CanTeleport(player, town[0], "town"))
+                        if (CanTeleport(player, town[0], "Town"))
                         {
                             if (!TeleportTimers.ContainsKey(player.userID))
                             {
-                                TeleportTimers.Add(player.userID, new TPTimer() { countdown = configData.Town.CountDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(town[0]) });
+                                TeleportTimers.Add(player.userID, new TPTimer() { countdown = configData.Types["Town"].CountDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(town[0]) });
                                 HandleTimer(player.userID, true);
-                                Message(iplayer, "teleporting", command, configData.Town.CountDown.ToString());
+                                Message(iplayer, "teleporting", command, configData.Types["Town"].CountDown.ToString());
                             }
                             else if(TeleportTimers[player.userID].countdown == 0)
                             {
@@ -397,20 +382,20 @@ namespace Oxide.Plugins
                         }
                         break;
                     }
-                    Message(iplayer, "townnotset");
+                    Message(iplayer, "locationnotset", Lang("town"));
                     break;
                 case "bandit":
-                    if (!iplayer.HasPermission(permremodtpBandit)) { Message(iplayer, "notauthorized"); return; }
+                    if (!iplayer.HasPermission(permTP_Bandit)) { Message(iplayer, "notauthorized"); return; }
                     List<string> bandit = (List<string>) RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name='bandit'");
                     if (bandit != null)
                     {
-                        if (CanTeleport(player, bandit[0], "bandit"))
+                        if (CanTeleport(player, bandit[0], "Bandit"))
                         {
                             if (!TeleportTimers.ContainsKey(player.userID))
                             {
-                                TeleportTimers.Add(player.userID, new TPTimer() { countdown = configData.Bandit.CountDown, source = player, targetName = Lang("bandit"), targetLocation = StringToVector3(bandit[0]) });
+                                TeleportTimers.Add(player.userID, new TPTimer() { countdown = configData.Types["Bandit"].CountDown, source = player, targetName = Lang("bandit"), targetLocation = StringToVector3(bandit[0]) });
                                 HandleTimer(player.userID, true);
-                                Message(iplayer, "teleporting", command, configData.Bandit.CountDown.ToString());
+                                Message(iplayer, "teleporting", command, configData.Types["Bandit"].CountDown.ToString());
                             }
                             else if(TeleportTimers[player.userID].countdown == 0)
                             {
@@ -419,21 +404,21 @@ namespace Oxide.Plugins
                         }
                         break;
                     }
-                    Message(iplayer, "banditnotset");
+                    Message(iplayer, "locationnotset", Lang("bandit"));
                     break;
                 case "outpost":
-                    if (!iplayer.HasPermission(permremodtpOutpost)) { Message(iplayer, "notauthorized"); return; }
+                    if (!iplayer.HasPermission(permTP_Outpost)) { Message(iplayer, "notauthorized"); return; }
                     List<string> outpost = (List<string>) RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name='outpost'");
-                    Puts($"Outpost location: {outpost[0]}");
+                    //Puts($"Outpost location: {outpost[0]}");
                     if (outpost != null)
                     {
-                        if (CanTeleport(player, outpost[0], "outpost"))
+                        if (CanTeleport(player, outpost[0], "Outpost"))
                         {
                             if (!TeleportTimers.ContainsKey(player.userID))
                             {
-                                TeleportTimers.Add(player.userID, new TPTimer() { countdown = configData.Bandit.CountDown, source = player, targetName = Lang("outpost"), targetLocation = StringToVector3(outpost[0]) });
+                                TeleportTimers.Add(player.userID, new TPTimer() { countdown = configData.Types["Outpost"].CountDown, source = player, targetName = Lang("outpost"), targetLocation = StringToVector3(outpost[0]) });
                                 HandleTimer(player.userID, true);
-                                Message(iplayer, "teleporting", command, configData.Outpost.CountDown.ToString());
+                                Message(iplayer, "teleporting", command, configData.Types["Outpost"].CountDown.ToString());
                             }
                             else if(TeleportTimers[player.userID].countdown == 0)
                             {
@@ -442,7 +427,7 @@ namespace Oxide.Plugins
                         }
                         break;
                     }
-                    Message(iplayer, "outpostnotset");
+                    Message(iplayer, "locationnotset", Lang("outpost"));
                     break;
             }
         }
@@ -450,17 +435,17 @@ namespace Oxide.Plugins
         [Command("tpb")]
         private void CmdTpb(IPlayer iplayer, string command, string[] args)
         {
-            if (!iplayer.HasPermission(permremodtpTPB)) { Message(iplayer, "notauthorized"); return; }
+            if (!iplayer.HasPermission(permTP_TPB)) { Message(iplayer, "notauthorized"); return; }
             var player = iplayer.Object as BasePlayer;
             if(SavedPoints.ContainsKey(player.userID))
             {
                 Vector3 oldloc = SavedPoints[player.userID];
 
-                if (CanTeleport(player, oldloc.ToString(), "tpb"))
+                if (CanTeleport(player, oldloc.ToString(), "TPB"))
                 {
-                    TeleportTimers.Add(player.userID, new TPTimer() { countdown = configData.TPB.CountDown, source = player, targetName = Lang("tpb"), targetLocation = oldloc });
+                    TeleportTimers.Add(player.userID, new TPTimer() { countdown = configData.Types["TPB"].CountDown, source = player, targetName = Lang("tpb"), targetLocation = oldloc });
                     HandleTimer(player.userID, true);
-                    Message(iplayer, "teleporting", Lang("tpb"), configData.TPB.CountDown.ToString());
+                    Message(iplayer, "teleporting", Lang("tpb"), configData.Types["TPB"].CountDown.ToString());
                     SavedPoints.Remove(player.userID);
                 }
             }
@@ -481,7 +466,7 @@ namespace Oxide.Plugins
         [Command("tpr")]
         private void CmdTpr(IPlayer iplayer, string command, string[] args)
         {
-            if (!iplayer.HasPermission(permremodtpTPR)) { Message(iplayer, "notauthorized"); return; }
+            if (!iplayer.HasPermission(permTP_TPR)) { Message(iplayer, "notauthorized"); return; }
             //configData.TPR.AutoAccept
         }
 
@@ -497,10 +482,18 @@ namespace Oxide.Plugins
         {
             reason = null;
             bool rtrn = false;
-            if (Vector3.Distance(player.transform.position, position) < configData.Options.HomeMinimumDistance)
+
+            List<string> checkhome = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{player.userID}'") ?? null;
+            if (checkhome != null)
             {
-                reason = Lang("hometooclose", null, configData.Options.HomeMinimumDistance.ToString());
-                return false;
+                foreach (var home in checkhome)
+                {
+                    if (Vector3.Distance(player.transform.position, StringToVector3(home)) < configData.Options.HomeMinimumDistance)
+                    {
+                        reason = Lang("hometooclose", null, configData.Options.HomeMinimumDistance.ToString());
+                        return false;
+                    }
+                }
             }
             if (configData.Options.HomeRequireFoundation)
             {
@@ -667,459 +660,79 @@ namespace Oxide.Plugins
 
             string monName = NearMonument(player);
             string cave = NearCave(player);
-            switch(type)
+
+            if (monName != null && monName.Contains("Oilrig") && configData.Types[type].BlockOnRig)
             {
-                case "home":
-                    if(monName != null && monName.Contains("Oilrig") && configData.Home.BlockOnRig)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    else if(monName != null && monName.Contains("Excavator") && configData.Home.BlockOnExcavator)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    else if (monName != null && configData.Home.BlockOnMonuments)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    if (cave != null && configData.Home.BlockOnCave)
-                    {
-                        Message(player.IPlayer, "cavetooclose", cave);
-                        return false;
-                    }
-                    if (player.InSafeZone() && configData.Home.BlockOnSafe)
-                    {
-                        Message(player.IPlayer, "safezone", type);
-                        return false;
-                    }
-                    if(oncargo && configData.Home.BlockOnCargo)
-                    {
-                        Message(player.IPlayer, "oncargo", type);
-                        return false;
-                    }
-                    if(onballoon && configData.Home.BlockOnBalloon)
-                    {
-                        Message(player.IPlayer, "onballoon", type);
-                        return false;
-                    }
-                    if(onlift && configData.Home.BlockOnLift)
-                    {
-                        Message(player.IPlayer, "onlift", type);
-                        return false;
-                    }
-                    if(AboveWater(player) && configData.Home.BlockOnWater)
-                    {
-                        Message(player.IPlayer, "onwater", type);
-                        return false;
-                    }
-                    if(player.IsSwimming() && configData.Home.BlockOnSwimming)
-                    {
-                        Message(player.IPlayer, "onswimming", type);
-                        return false;
-                    }
-                    if(player.IsWounded() && requester && configData.Home.BlockOnHurt)
-                    {
-                        Message(player.IPlayer, "onhurt", type);
-                        return false;
-                    }
-                    if (player.metabolism.temperature.value <= configData.Options.MinimumTemp && configData.Home.BlockOnCold)
-                    {
-                        Message(player.IPlayer,"oncold", type);
-                        return false;
-                    }
-                    if (player.metabolism.temperature.value >= configData.Options.MaximumTemp && configData.Home.BlockOnHot)
-                    {
-                        Message(player.IPlayer,"onhot", type);
-                        return false;
-                    }
-                    if(player.isMounted && configData.Home.BlockOnMounted)
-                    {
-                        Message(player.IPlayer,"onmounted", type);
-                        return false;
-                    }
-                    break;
-                case "town":
-                    if(monName != null && monName.Contains("Oilrig") && configData.Town.BlockOnRig)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    else if(monName != null && monName.Contains("Excavator") && configData.Town.BlockOnExcavator)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    else if (monName != null && configData.Town.BlockOnMonuments)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    if (cave != null && configData.Town.BlockOnCave)
-                    {
-                        Message(player.IPlayer, "cavetooclose", cave);
-                        return false;
-                    }
-                    if (player.InSafeZone() && configData.Town.BlockOnSafe)
-                    {
-                        Message(player.IPlayer, "safezone", type);
-                        return false;
-                    }
-                    if(oncargo && configData.Town.BlockOnCargo)
-                    {
-                        Message(player.IPlayer, "oncargo", type);
-                        return false;
-                    }
-                    if(onballoon && configData.Town.BlockOnBalloon)
-                    {
-                        Message(player.IPlayer, "onballoon", type);
-                        return false;
-                    }
-                    if(onlift && configData.Town.BlockOnLift)
-                    {
-                        Message(player.IPlayer, "onlift", type);
-                        return false;
-                    }
-                    if(AboveWater(player) && configData.Town.BlockOnWater)
-                    {
-                        Message(player.IPlayer, "onwater", type);
-                        return false;
-                    }
-                    if(player.IsSwimming() && configData.Town.BlockOnSwimming)
-                    {
-                        Message(player.IPlayer, "onswimming", type);
-                        return false;
-                    }
-                    if(player.IsWounded() && requester && configData.Town.BlockOnHurt)
-                    {
-                        Message(player.IPlayer, "onhurt", type);
-                        return false;
-                    }
-                    if (player.metabolism.temperature.value <= configData.Options.MinimumTemp && configData.Town.BlockOnCold)
-                    {
-                        Message(player.IPlayer,"oncold", type);
-                        return false;
-                    }
-                    if (player.metabolism.temperature.value >= configData.Options.MaximumTemp && configData.Town.BlockOnHot)
-                    {
-                        Message(player.IPlayer,"onhot", type);
-                        return false;
-                    }
-                    if(player.isMounted && configData.Town.BlockOnMounted)
-                    {
-                        Message(player.IPlayer,"onmounted", type);
-                        return false;
-                    }
-                    break;
-                case "bandit":
-                    if(monName != null && monName.Contains("Oilrig") && configData.Bandit.BlockOnRig)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    else if(monName != null && monName.Contains("Excavator") && configData.Bandit.BlockOnExcavator)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    else if (monName != null && configData.Bandit.BlockOnMonuments)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    if (cave != null && configData.Bandit.BlockOnCave)
-                    {
-                        Message(player.IPlayer, "cavetooclose", cave);
-                        return false;
-                    }
-                    if (player.InSafeZone() && configData.Bandit.BlockOnSafe)
-                    {
-                        Message(player.IPlayer, "safezone", type);
-                        return false;
-                    }
-                    if(oncargo && configData.Bandit.BlockOnCargo)
-                    {
-                        Message(player.IPlayer, "oncargo", type);
-                        return false;
-                    }
-                    if(onballoon && configData.Bandit.BlockOnBalloon)
-                    {
-                        Message(player.IPlayer, "onballoon", type);
-                        return false;
-                    }
-                    if(onlift && configData.Bandit.BlockOnLift)
-                    {
-                        Message(player.IPlayer, "onlift", type);
-                        return false;
-                    }
-                    if(AboveWater(player) && configData.Bandit.BlockOnWater)
-                    {
-                        Message(player.IPlayer, "onwater", type);
-                        return false;
-                    }
-                    if(player.IsSwimming() && configData.Bandit.BlockOnSwimming)
-                    {
-                        Message(player.IPlayer, "onswimming", type);
-                        return false;
-                    }
-                    if(player.IsWounded() && requester && configData.Bandit.BlockOnHurt)
-                    {
-                        Message(player.IPlayer, "onhurt", type);
-                        return false;
-                    }
-                    if (player.metabolism.temperature.value <= configData.Options.MinimumTemp && configData.Bandit.BlockOnCold)
-                    {
-                        Message(player.IPlayer,"oncold", type);
-                        return false;
-                    }
-                    if (player.metabolism.temperature.value >= configData.Options.MaximumTemp && configData.Bandit.BlockOnHot)
-                    {
-                        Message(player.IPlayer,"onhot", type);
-                        return false;
-                    }
-                    if(player.isMounted && configData.Bandit.BlockOnMounted)
-                    {
-                        Message(player.IPlayer,"onmounted", type);
-                        return false;
-                    }
-                    if (player.IsHostile() && configData.Bandit.BlockOnHostile)
-                    {
-                        float unHostileTime = (float)player.State.unHostileTimestamp;
-                        float currentTime = (float)Network.TimeEx.currentTimestamp;
-                        string hostilecd = ((int)Math.Abs(unHostileTime - currentTime) / 60).ToString();
-                        if ((unHostileTime - currentTime) < 60) hostilecd = "<1";
-                        Message(player.IPlayer, "onhostile", type, hostilecd);
-                        return false;
-                    }
-                    break;
-                case "outpost":
-                    if(monName != null && monName.Contains("Oilrig") && configData.Outpost.BlockOnRig)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    else if(monName != null && monName.Contains("Excavator") && configData.Outpost.BlockOnExcavator)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    else if (monName != null && configData.Outpost.BlockOnMonuments)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    if (cave != null && configData.Outpost.BlockOnCave)
-                    {
-                        Message(player.IPlayer, "cavetooclose", cave);
-                        return false;
-                    }
-                    if (player.InSafeZone() && configData.Outpost.BlockOnSafe)
-                    {
-                        Message(player.IPlayer, "safezone", type);
-                        return false;
-                    }
-                    if(oncargo && configData.Outpost.BlockOnCargo)
-                    {
-                        Message(player.IPlayer, "oncargo", type);
-                        return false;
-                    }
-                    if(onballoon && configData.Outpost.BlockOnBalloon)
-                    {
-                        Message(player.IPlayer, "onballoon", type);
-                        return false;
-                    }
-                    if(onlift && configData.Outpost.BlockOnLift)
-                    {
-                        Message(player.IPlayer, "onlift", type);
-                        return false;
-                    }
-                    if(AboveWater(player) && configData.Outpost.BlockOnWater)
-                    {
-                        Message(player.IPlayer, "onwater", type);
-                        return false;
-                    }
-                    if(player.IsSwimming() && configData.Outpost.BlockOnSwimming)
-                    {
-                        Message(player.IPlayer, "onswimming", type);
-                        return false;
-                    }
-                    if(player.IsWounded() && requester && configData.Outpost.BlockOnHurt)
-                    {
-                        Message(player.IPlayer, "onhurt", type);
-                        return false;
-                    }
-                    if (player.metabolism.temperature.value <= configData.Options.MinimumTemp && configData.Outpost.BlockOnCold)
-                    {
-                        Message(player.IPlayer,"oncold", type);
-                        return false;
-                    }
-                    if (player.metabolism.temperature.value >= configData.Options.MaximumTemp && configData.Outpost.BlockOnHot)
-                    {
-                        Message(player.IPlayer,"onhot", type);
-                        return false;
-                    }
-                    if(player.isMounted && configData.Outpost.BlockOnMounted)
-                    {
-                        Message(player.IPlayer,"onmounted", type);
-                        return false;
-                    }
-                    if (player.IsHostile() && configData.Outpost.BlockOnHostile)
-                    {
-                        float unHostileTime = (float)player.State.unHostileTimestamp;
-                        float currentTime = (float)Network.TimeEx.currentTimestamp;
-                        string hostilecd = ((int)Math.Abs(unHostileTime - currentTime) / 60).ToString();
-                        if ((unHostileTime - currentTime) < 60) hostilecd = "<1";
-                        Message(player.IPlayer, "onhostile", type, hostilecd);
-                        return false;
-                    }
-                    break;
-                case "tpb":
-                    if(monName != null && monName.Contains("Oilrig") && configData.TPB.BlockOnRig)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    else if(monName != null && monName.Contains("Excavator") && configData.TPB.BlockOnExcavator)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    else if (monName != null && configData.TPB.BlockOnMonuments)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    if (cave != null && configData.TPB.BlockOnCave)
-                    {
-                        Message(player.IPlayer, "cavetooclose", cave);
-                        return false;
-                    }
-                    if (player.InSafeZone() && configData.TPB.BlockOnSafe)
-                    {
-                        Message(player.IPlayer, "safezone", type);
-                        return false;
-                    }
-                    if(oncargo && configData.TPB.BlockOnCargo)
-                    {
-                        Message(player.IPlayer, "oncargo", type);
-                        return false;
-                    }
-                    if(onballoon && configData.TPB.BlockOnBalloon)
-                    {
-                        Message(player.IPlayer, "onballoon", type);
-                        return false;
-                    }
-                    if(onlift && configData.TPB.BlockOnLift)
-                    {
-                        Message(player.IPlayer, "onlift", type);
-                        return false;
-                    }
-                    if(AboveWater(player) && configData.TPB.BlockOnWater)
-                    {
-                        Message(player.IPlayer, "onwater", type);
-                        return false;
-                    }
-                    if(player.IsSwimming() && configData.TPB.BlockOnSwimming)
-                    {
-                        Message(player.IPlayer, "onswimming", type);
-                        return false;
-                    }
-                    if(player.IsWounded() && requester && configData.TPB.BlockOnHurt)
-                    {
-                        Message(player.IPlayer, "onhurt", type);
-                        return false;
-                    }
-                    if (player.metabolism.temperature.value <= configData.Options.MinimumTemp && configData.TPB.BlockOnCold)
-                    {
-                        Message(player.IPlayer,"oncold", type);
-                        return false;
-                    }
-                    if (player.metabolism.temperature.value >= configData.Options.MaximumTemp && configData.TPB.BlockOnHot)
-                    {
-                        Message(player.IPlayer,"onhot", type);
-                        return false;
-                    }
-                    if(player.isMounted && configData.TPB.BlockOnMounted)
-                    {
-                        Message(player.IPlayer,"onmounted", type);
-                        return false;
-                    }
-                    break;
-                case "tpr":
-                    if(monName != null && monName.Contains("Oilrig") && configData.TPR.BlockOnRig)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    else if(monName != null && monName.Contains("Excavator") && configData.TPR.BlockOnExcavator)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    else if (monName != null && configData.TPR.BlockOnMonuments)
-                    {
-                        Message(player.IPlayer, "montooclose", type, monName);
-                        return false;
-                    }
-                    if (cave != null && configData.TPR.BlockOnCave)
-                    {
-                        Message(player.IPlayer, "cavetooclose", cave);
-                        return false;
-                    }
-                    if (player.InSafeZone() && configData.TPR.BlockOnSafe)
-                    {
-                        Message(player.IPlayer, "safezone", type);
-                        return false;
-                    }
-                    if(oncargo && configData.TPR.BlockOnCargo)
-                    {
-                        Message(player.IPlayer, "oncargo", type);
-                        return false;
-                    }
-                    if(onballoon && configData.TPR.BlockOnBalloon)
-                    {
-                        Message(player.IPlayer, "onballoon", type);
-                        return false;
-                    }
-                    if(onlift && configData.TPR.BlockOnLift)
-                    {
-                        Message(player.IPlayer, "onlift", type);
-                        return false;
-                    }
-                    if(AboveWater(player) && configData.TPR.BlockOnWater)
-                    {
-                        Message(player.IPlayer, "onwater", type);
-                        return false;
-                    }
-                    if(player.IsSwimming() && configData.TPR.BlockOnSwimming)
-                    {
-                        Message(player.IPlayer, "onswimming", type);
-                        return false;
-                    }
-                    if(player.IsWounded() && requester && configData.TPR.BlockOnHurt)
-                    {
-                        Message(player.IPlayer, "onhurt", type);
-                        return false;
-                    }
-                    if (player.metabolism.temperature.value <= configData.Options.MinimumTemp && configData.TPR.BlockOnCold)
-                    {
-                        Message(player.IPlayer,"oncold", type);
-                        return false;
-                    }
-                    if (player.metabolism.temperature.value >= configData.Options.MaximumTemp && configData.TPR.BlockOnHot)
-                    {
-                        Message(player.IPlayer,"onhot", type);
-                        return false;
-                    }
-                    if(player.isMounted && configData.TPR.BlockOnMounted)
-                    {
-                        Message(player.IPlayer,"onmounted", type);
-                        return false;
-                    }
-                    break;
+                Message(player.IPlayer, "montooclose", type.ToLower(), monName);
+                return false;
             }
+            else if (monName != null && monName.Contains("Excavator") && configData.Types[type].BlockOnExcavator)
+            {
+                Message(player.IPlayer, "montooclose", type.ToLower(), monName);
+                return false;
+            }
+            else if (monName != null && configData.Types[type].BlockOnMonuments)
+            {
+                Message(player.IPlayer, "montooclose", type.ToLower(), monName);
+                return false;
+            }
+            if (cave != null && configData.Types[type].BlockOnCave)
+            {
+                Message(player.IPlayer, "cavetooclose", cave);
+                return false;
+            }
+            if (player.InSafeZone() && configData.Types[type].BlockOnSafe)
+            {
+                Message(player.IPlayer, "safezone", type.ToLower());
+                return false;
+            }
+            if (oncargo && configData.Types[type].BlockOnCargo)
+            {
+                Message(player.IPlayer, "oncargo", type.ToLower());
+                return false;
+            }
+            if (onballoon && configData.Types[type].BlockOnBalloon)
+            {
+                Message(player.IPlayer, "onballoon", type.ToLower());
+                return false;
+            }
+            if (onlift && configData.Types[type].BlockOnLift)
+            {
+                Message(player.IPlayer, "onlift", type.ToLower());
+                return false;
+            }
+            if (AboveWater(player) && configData.Types[type].BlockOnWater)
+            {
+                Message(player.IPlayer, "onwater", type.ToLower());
+                return false;
+            }
+            if (player.IsSwimming() && configData.Types[type].BlockOnSwimming)
+            {
+                Message(player.IPlayer, "onswimming", type.ToLower());
+                return false;
+            }
+            if (player.IsWounded() && requester && configData.Types[type].BlockOnHurt)
+            {
+                Message(player.IPlayer, "onhurt", type.ToLower());
+                return false;
+            }
+            if (player.metabolism.temperature.value <= configData.Options.MinimumTemp && configData.Types[type].BlockOnCold)
+            {
+                Message(player.IPlayer, "oncold", type.ToLower());
+                return false;
+            }
+            if (player.metabolism.temperature.value >= configData.Options.MaximumTemp && configData.Types[type].BlockOnHot)
+            {
+                Message(player.IPlayer, "onhot", type.ToLower());
+                return false;
+            }
+            if (player.isMounted && configData.Types[type].BlockOnMounted)
+            {
+                Message(player.IPlayer, "onmounted", type.ToLower());
+                return false;
+            }
+
+            // Passed!
             return true;
         }
 
@@ -1153,13 +766,13 @@ namespace Oxide.Plugins
             {
                 var monname = entry.Key;
                 var monvector = entry.Value;
-                float remoddistance = monSize[monname].z;
+                float teleporticationdistance = monSize[monname].z;
                 monvector.y = pos.y;
                 float dist = Vector3.Distance(pos, monvector);
 #if DEBUG
-                Puts($"Checking {monname} dist: {dist.ToString()}, remoddistance: {remoddistance.ToString()}");
+                Puts($"Checking {monname} dist: {dist.ToString()}, teleporticationdistance: {teleporticationdistance.ToString()}");
 #endif
-                if(dist < remoddistance)
+                if(dist < teleporticationdistance)
                 {
 #if DEBUG
                     Puts($"Player in range of {monname}");
@@ -1177,19 +790,19 @@ namespace Oxide.Plugins
             foreach(KeyValuePair<string, Vector3> entry in cavePos)
             {
                 var cavename = entry.Key;
-                float remoddistance = 0f;
+                float teleporticationdistance = 0f;
 
                 if(cavename.Contains("Small"))
                 {
-                    remoddistance = configData.Options.CaveDistanceSmall;
+                    teleporticationdistance = configData.Options.CaveDistanceSmall;
                 }
                 else if(cavename.Contains("Large"))
                 {
-                    remoddistance = configData.Options.CaveDistanceLarge;
+                    teleporticationdistance = configData.Options.CaveDistanceLarge;
                 }
                 else if(cavename.Contains("Medium"))
                 {
-                    remoddistance = configData.Options.CaveDistanceMedium;
+                    teleporticationdistance = configData.Options.CaveDistanceMedium;
                 }
 
                 var cavevector = entry.Value;
@@ -1197,7 +810,7 @@ namespace Oxide.Plugins
                 var cpos = cavevector.ToString();
                 float dist = Vector3.Distance(pos, cavevector);
 
-                if(dist < remoddistance)
+                if(dist < teleporticationdistance)
                 {
 #if DEBUG
                     Puts($"NearCave: {cavename} nearby.");
@@ -1244,23 +857,23 @@ namespace Oxide.Plugins
         void FindMonuments()
         {
             Vector3 extents = Vector3.zero;
-            float remodWidth = 0f;
+            float teleporticationWidth = 0f;
             string name = null;
             foreach (MonumentInfo monument in UnityEngine.Object.FindObjectsOfType<MonumentInfo>())
             {
                 if (monument.name.Contains("power_sub")) continue;
-                remodWidth = 0f;
+                teleporticationWidth = 0f;
                 name = null;
 
                 if(monument.name == "OilrigAI")
                 {
                     name = "Small Oilrig";
-                    remodWidth = 100f;
+                    teleporticationWidth = 100f;
                 }
                 else if(monument.name == "OilrigAI2")
                 {
                     name = "Large Oilrig";
-                    remodWidth = 200f;
+                    teleporticationWidth = 200f;
                 }
                 else
                 {
@@ -1274,9 +887,9 @@ namespace Oxide.Plugins
 //                Puts($"Found {name}, extents {extents.ToString()}");
 //#endif
 
-                if(remodWidth > 0f)
+                if(teleporticationWidth > 0f)
                 {
-                    extents.z = remodWidth;
+                    extents.z = teleporticationWidth;
 //#if DEBUG
 //                    Puts($"  corrected to {extents.ToString()}");
 //#endif
@@ -1507,22 +1120,22 @@ namespace Oxide.Plugins
             config.Options.AutoGenOutpost = true;
             config.Options.MinimumTemp = 0f;
             config.Options.MaximumTemp = 40f;
-            config.Home.CountDown = 5f;
-            config.Home.CoolDown = 120f;
-            config.Town.CountDown = 5f;
-            config.Town.CoolDown = 120f;
-            config.Bandit.CountDown = 5f;
-            config.Bandit.CoolDown = 120f;
-            config.Bandit.BlockOnHostile = true;
-            config.Outpost.CountDown = 5f;
-            config.Outpost.CoolDown = 120f;
-            config.Outpost.BlockOnHostile = true;
-            config.TPB.CountDown = 5f;
-            config.TPB.CoolDown = 120f;
-            config.TPC.CountDown = 5f;
-            config.TPC.CoolDown = 120f;
-            config.TPR.CountDown = 5f;
-            config.TPR.CoolDown = 120f;
+            config.Types["Home"].CountDown = 5f;
+            config.Types["Home"].CoolDown = 120f;
+            config.Types["Town"].CountDown = 5f;
+            config.Types["Town"].CoolDown = 120f;
+            config.Types["Bandit"].CountDown = 5f;
+            config.Types["Bandit"].CoolDown = 120f;
+            config.Types["Bandit"].BlockOnHostile = true;
+            config.Types["Outpost"].CountDown = 5f;
+            config.Types["Outpost"].CoolDown = 120f;
+            config.Types["Outpost"].BlockOnHostile = true;
+            config.Types["TPB"].CountDown = 5f;
+            config.Types["TPB"].CoolDown = 120f;
+            config.Types["TPC"].CountDown = 5f;
+            config.Types["TPC"].CoolDown = 120f;
+            config.Types["TPR"].CountDown = 5f;
+            config.Types["TPR"].CoolDown = 120f;
 
             SaveConfig(config);
         }
@@ -1534,15 +1147,19 @@ namespace Oxide.Plugins
         private class ConfigData
         {
             public Options Options = new Options();
-            public CmdOptions Home = new CmdOptions();
-            public CmdOptions Town = new CmdOptions();
-            public CmdOptions Bandit = new CmdOptions();
-            public CmdOptions Outpost = new CmdOptions();
-            public CmdOptions TPB = new CmdOptions();
-            public CmdOptions TPC = new CmdOptions();
-            public CmdOptions TPR = new CmdOptions();
-
+            public Dictionary<string,CmdOptions> Types = new Dictionary<string, CmdOptions>();
             public VersionNumber Version;
+
+            public ConfigData()
+            {
+                Types.Add("Home", new CmdOptions());
+                Types.Add("Town", new CmdOptions());
+                Types.Add("Bandit", new CmdOptions());
+                Types.Add("Outpost", new CmdOptions());
+                Types.Add("TPB", new CmdOptions());
+                Types.Add("TPC", new CmdOptions());
+                Types.Add("TPR", new CmdOptions());
+            }
         }
 
         private class Options

@@ -1,4 +1,4 @@
-## Remod Teleport (Work in progress)
+## Teleportication (Work in progress)
 Nextgen Teleport plugin for Rust
 
 Uses Friends, Clans, Rust teams, RustIO
@@ -54,27 +54,28 @@ A lot of the familiar commands from older teleport plugins are still there, with
     "MaximumTemp": 40.0,
     "SetCommand": "set"
   },
-  "Home": {
-    "BlockOnHurt": false,
-    "BlockOnCold": false,
-    "BlockOnHot": false,
-    "BlockOnCave": false,
-    "BlockOnRig": false,
-    "BlockOnMonuments": false,
-    "BlockOnHostile": false,
-    "BlockOnSafe": false,
-    "BlockOnBalloon": false,
-    "BlockOnCargo": false,
-    "BlockOnExcavator": false,
-    "BlockOnLift": false,
-    "BlockOnMounted": false,
-    "BlockOnSwimming": false,
-    "BlockOnWater": false,
-    "AutoAccept": false,
-    "DailyLimit": 0.0,
-    "CountDown": 5.0,
-    "CoolDown": 120.0
-  },
+  "Types": {
+    "Home": {
+      "BlockOnHurt": false,
+      "BlockOnCold": false,
+      "BlockOnHot": false,
+      "BlockOnCave": false,
+      "BlockOnRig": false,
+      "BlockOnMonuments": false,
+      "BlockOnHostile": false,
+      "BlockOnSafe": false,
+      "BlockOnBalloon": false,
+      "BlockOnCargo": false,
+      "BlockOnExcavator": false,
+      "BlockOnLift": false,
+      "BlockOnMounted": false,
+      "BlockOnSwimming": false,
+      "BlockOnWater": false,
+      "AutoAccept": false,
+      "DailyLimit": 0.0,
+      "CountDown": 5.0,
+      "CoolDown": 120.0
+    },
   ...
 }
 ```
