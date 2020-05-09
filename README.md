@@ -24,12 +24,12 @@ A lot of the familiar commands from older teleport plugins are still there, with
     - /tpb - Takes you back to your previous location
 
 ### Permissions
-    - realteleport.use     - /home
-    - realteleport.tpb     - /tpb
-    - realteleport.tpr     - /tpr
-    - realteleport.town    - /town
-    - realteleport.bandit  - /bandit
-    - realteleport.outpost - /outpost
+    - teleportication.use     - /home
+    - teleportication.tpb     - /tpb
+    - teleportication.tpr     - /tpr
+    - teleportication.town    - /town
+    - teleportication.bandit  - /bandit
+    - teleportication.outpost - /outpost
 
 ### Configuration
 ```json
@@ -123,7 +123,7 @@ A lot of the familiar commands from older teleport plugins are still there, with
 
 Despite some similarites, the configuration and data files from other teleport plugins are NOT compatible.
 
-RealTeleport uses SQLite for home, town, bandit, and outpost storage.  The file is saved in {oxidedata}/RealTeleport/realteleport.db.
+teleportication uses SQLite for home, town, bandit, and outpost storage.  The file is saved in {oxidedata}/Teleportication/teleportication.db.
 
 In-memory objects keep track of previous location for tpb, pending tpr/tpa, etc.  This could change as development progresses.
 
