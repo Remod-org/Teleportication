@@ -18,7 +18,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.0.1")]
+    [Info("Teleportication", "RFC1920", "1.0.2")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -589,6 +589,15 @@ namespace Oxide.Plugins
         #region main
         private bool CanTeleport(BasePlayer player, string location, string type, bool requester = true)
         {
+            if((player as BaseCombatEntity).IsHostile() && configData.Types[type].BlockOnHostile)
+            {
+                float unHostileTime = (float)player.State.unHostileTimestamp;
+                float currentTime = (float)Network.TimeEx.currentTimestamp;
+                string pt = ((int)Math.Abs(unHostileTime - currentTime) / 60).ToString();
+                if ((unHostileTime - currentTime) < 60) pt = "<1";
+                Message(player.IPlayer, "onhostile", type, pt);
+                return false;
+            }
             if (CooldownTimers.ContainsKey(player.userID))
             {
                 Puts("Found a cooldown timer");
@@ -950,12 +959,12 @@ namespace Oxide.Plugins
         #region helpers
         public static string FirstCharToUpper(string s)
         {
-            // Check for empty string.  
+            // Check for empty string.
             if (string.IsNullOrEmpty(s))
             {
                 return string.Empty;
             }
-            // Return char and concat substring.  
+            // Return char and concat substring.
             return char.ToUpper(s[0]) + s.Substring(1);
         }
 
@@ -1197,6 +1206,7 @@ namespace Oxide.Plugins
                 {
                     // HandleMoney(string userid, double bypass, bool withdraw = false, bool deposit = false)
                     // Check available funds
+                    // Work in progress :(
                     if (canbypass && HandleMoney(userid.ToString(), bypassamount, dobypass))
                     {
 
