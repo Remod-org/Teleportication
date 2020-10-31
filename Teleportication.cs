@@ -1,9 +1,13 @@
-//#define DEBUG
+#define DEBUG
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
+using Newtonsoft.Json.Linq;
 using Oxide.Core;
 using Oxide.Core.Configuration;
 using Oxide.Core.Libraries.Covalence;
 using Oxide.Core.Plugins;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Data.SQLite;
 using System.IO;
@@ -18,7 +22,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.0.2")]
+    [Info("Teleportication", "RFC1920", "1.0.3")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -101,7 +105,6 @@ namespace Oxide.Plugins
             permission.RegisterPermission(permTP_TPR, this);
             permission.RegisterPermission(permTP_Town, this);
             permission.RegisterPermission(permTP_Bandit, this);
-            permission.RegisterPermission(permTP_Outpost, this);
             permission.RegisterPermission(permTP_Admin, this);
 
             FindMonuments();
@@ -157,6 +160,9 @@ namespace Oxide.Plugins
                 ["noprevious"] = "No previous location saved.",
                 ["teleportinghome"] = "Teleporting to home {0} in {1} seconds...",
                 ["BackupDone"] = "Teleportication database has been backed up to {0}",
+                ["importhelp"] = "/tpadmin import {r/n} {y/1/yes/true}\n\t import RTeleportion or NTeleportation\n\tadd y or 1 or true to actually import\n\totherwise display data only",
+                ["importdone"] = "Homes have been imported from datafile '{0}'",
+                ["importing"] = "Importing data for {0}",
                 ["tpcancelled"] = "Teleport cancelled!"
             }, this);
         }
@@ -194,10 +200,60 @@ namespace Oxide.Plugins
             string debug = string.Join(",", args); Puts($"{debug}");
 #endif
             if (!iplayer.HasPermission(permTP_Admin)) { Message(iplayer, "notauthorized"); return; }
-            if (args.Length == 1)
+            if (args.Length > 0)
             {
                 switch (args[0])
                 {
+                    case "import":
+                        // args[1] == r/n
+                        // Import from N/RTeleportation
+                        string datFile = null;
+                        bool doit = false;
+                        if (args.Length > 1)
+                        {
+                            switch (args[1])
+                            {
+                                case "r":
+                                    datFile = "RTeleportationHome";
+                                    break;
+                                case "n":
+                                    datFile = "NTeleportationHome";
+                                    break;
+                                default:
+                                    Message(iplayer, "importhelp");
+                                    return;
+                            }
+                        }
+                        if(args.Length > 2)
+                        {
+                            doit = GetBoolValue(args[2]);
+                        }
+
+                        if (datFile != null)
+                        {
+                            var tpfile = Interface.Oxide.DataFileSystem.GetFile(datFile);
+                            tpfile.Settings.NullValueHandling = NullValueHandling.Ignore;
+                            tpfile.Settings.Converters = new JsonConverter[] { new UnityVector3Converter(), new CustomComparerDictionaryCreationConverter<string>(StringComparer.OrdinalIgnoreCase) };
+                            Dictionary<ulong, HomeData> tphomes = tpfile.ReadObject<Dictionary<ulong, HomeData>>();
+
+                            foreach (KeyValuePair<ulong,HomeData> userHomes in tphomes)
+                            {
+                                foreach (var home in userHomes.Value.Locations)
+                                {
+                                    if (doit)
+                                    {
+                                        RunUpdateQuery($"INSERT OR REPLACE INTO rtp_player VALUES('{userHomes.Key}', '{home.Key}', '{home.Value}', '0', 0)");
+                                        Message(iplayer, "importing", userHomes.Key);
+                                    }
+                                    else
+                                    {
+                                        Message(iplayer, $"{userHomes.Key}: Home {home.Key} location {home.Value}");
+                                    }
+                                }
+                            }
+                            if(doit) Message(iplayer, "importdone", datFile);
+                        }
+                        break;
                     case "wipe":
                         Message(iplayer, "Wiping data!");
                         CreateOrClearTables(true);
@@ -957,6 +1013,24 @@ namespace Oxide.Plugins
         #endregion
 
         #region helpers
+        private static bool GetBoolValue(string value)
+        {
+            if (value == null) return false;
+            value = value.Trim().ToLower();
+            switch (value)
+            {
+                case "t":
+                case "true":
+                case "1":
+                case "yes":
+                case "y":
+                case "on":
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         public static string FirstCharToUpper(string s)
         {
             // Check for empty string.
@@ -1449,6 +1523,89 @@ namespace Oxide.Plugins
             public bool AllowBypass;
             public double BypassAmount;
         }
+
+        #region IMPORT
+        class HomeData
+        {
+            [JsonProperty("l")]
+            public Dictionary<string, Vector3> Locations { get; set; } = new Dictionary<string, Vector3>(StringComparer.OrdinalIgnoreCase);
+
+            [JsonProperty("t")]
+            public TeleportData Teleports { get; set; } = new TeleportData();
+        }
+
+        class TeleportData
+        {
+            [JsonProperty("a")]
+            public int Amount { get; set; }
+
+            [JsonProperty("d")]
+            public string Date { get; set; }
+
+            [JsonProperty("t")]
+            public int Timestamp { get; set; }
+        }
+        private class UnityVector3Converter : JsonConverter
+        {
+            public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+            {
+                var vector = (Vector3)value;
+                writer.WriteValue($"{vector.x} {vector.y} {vector.z}");
+            }
+
+            public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+            {
+                if (reader.TokenType == JsonToken.String)
+                {
+                    var values = reader.Value.ToString().Trim().Split(' ');
+                    return new Vector3(Convert.ToSingle(values[0]), Convert.ToSingle(values[1]), Convert.ToSingle(values[2]));
+                }
+                var o = JObject.Load(reader);
+                return new Vector3(Convert.ToSingle(o["x"]), Convert.ToSingle(o["y"]), Convert.ToSingle(o["z"]));
+            }
+
+            public override bool CanConvert(Type objectType)
+            {
+                return objectType == typeof(Vector3);
+            }
+        }
+        private class CustomComparerDictionaryCreationConverter<T> : CustomCreationConverter<IDictionary>
+        {
+            private readonly IEqualityComparer<T> comparer;
+
+            public CustomComparerDictionaryCreationConverter(IEqualityComparer<T> comparer)
+            {
+                if (comparer == null)
+                    throw new ArgumentNullException(nameof(comparer));
+                this.comparer = comparer;
+            }
+
+            public override bool CanConvert(Type objectType)
+            {
+                return HasCompatibleInterface(objectType) && HasCompatibleConstructor(objectType);
+            }
+
+            private static bool HasCompatibleInterface(Type objectType)
+            {
+                return objectType.GetInterfaces().Where(i => HasGenericTypeDefinition(i, typeof(IDictionary<,>))).Any(i => typeof(T).IsAssignableFrom(i.GetGenericArguments().First()));
+            }
+
+            private static bool HasGenericTypeDefinition(Type objectType, Type typeDefinition)
+            {
+                return objectType.IsGenericType && objectType.GetGenericTypeDefinition() == typeDefinition;
+            }
+
+            private static bool HasCompatibleConstructor(Type objectType)
+            {
+                return objectType.GetConstructor(new[] { typeof(IEqualityComparer<T>) }) != null;
+            }
+
+            public override IDictionary Create(Type objectType)
+            {
+                return Activator.CreateInstance(objectType, comparer) as IDictionary;
+            }
+        }
+        #endregion IMPORT
         #endregion
 
         #region defaults

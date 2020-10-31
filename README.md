@@ -6,7 +6,7 @@ Uses Friends, Clans, Rust teams, RustIO
 A lot of the familiar commands from older teleport plugins are still there, with some exceptions.  This is where the similarites end.
 
 ### Commands
-    - /sethome NAME is and alias for /home set NAME.
+    - /sethome NAME is an alias for /home set NAME.
     - /home or /home list will show your currently set home names, locations, and lastused.
     - /home list OTHERPLAYER will show a list of that player's currently set homes.
     - /home set NAME - Sets a home at player's current location
@@ -22,6 +22,11 @@ A lot of the familiar commands from older teleport plugins are still there, with
     - /tpa - Accept teleport request
     - /tpc - Cancel a teleport
     - /tpb - Takes you back to your previous location
+    - /tpadmin - Parent function for:
+      - /tpadmin wipe - Wipe ALL home data and town, reset outpost and bandit.
+      - /tpadmin backup - Backup database
+      - /tpadmin import {r/n} {1/y/yes/true} - Import data from R/NTeleportation (homes only)
+        If you specify 1 or y, etc. at the end it will actually do the import.  Otherwise, it will show what will be imported.
 
 ### Permissions
     - teleportication.use     - /home
