@@ -1,4 +1,4 @@
-#define DEBUG
+//#define DEBUG
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
@@ -50,7 +50,7 @@ namespace Oxide.Plugins
         private readonly string logfilename = "log";
         private bool dolog = false;
 
-        private readonly Plugin Friends, Clans, RustIO, Economics, ServerRewards;
+        private readonly Plugin Friends, Clans, Economics, ServerRewards;
         private readonly int blockLayer = LayerMask.GetMask("Construction");
 
         public class TPTimer
@@ -110,7 +110,7 @@ namespace Oxide.Plugins
             FindMonuments();
         }
 
-        private void OnServerInitialized()
+        protected override void LoadDefaultMessages()
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
@@ -166,6 +166,7 @@ namespace Oxide.Plugins
                 ["tpcancelled"] = "Teleport cancelled!"
             }, this);
         }
+
         private void OnNewSave()
         {
             // Wipe homes and town, etc.
@@ -333,7 +334,9 @@ namespace Oxide.Plugins
         [Command("home")]
         private void CmdHomeTeleport(IPlayer iplayer, string command, string[] args)
         {
+#if DEBUG
             string debug = string.Join(",", args); Puts($"{debug}");
+#endif
             if (!iplayer.HasPermission(permTP_Use)) { Message(iplayer, "notauthorized"); return; }
 
             var player = iplayer.Object as BasePlayer;
@@ -656,7 +659,9 @@ namespace Oxide.Plugins
             }
             if (CooldownTimers.ContainsKey(player.userID))
             {
+#if DEBUG
                 Puts("Found a cooldown timer");
+#endif
                 if (CooldownTimers[player.userID].type == type.ToLower())
                 {
                     string timesince = Math.Floor(CooldownTimers[player.userID].start + CooldownTimers[player.userID].countdown - Time.realtimeSinceStartup).ToString();
@@ -1221,7 +1226,6 @@ namespace Oxide.Plugins
         // playerid = active player, ownerid = owner of camera, who may be offline
         bool IsFriend(ulong playerid, ulong ownerid)
         {
-            Puts($"Comparing player {playerid.ToString()} to owner {ownerid.ToString()}");
             if(configData.Options.useFriends && Friends != null)
             {
                 var fr = Friends?.CallHook("AreFriends", playerid, ownerid);
