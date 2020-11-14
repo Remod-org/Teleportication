@@ -23,7 +23,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.0.4")]
+    [Info("Teleportication", "RFC1920", "1.0.5")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -1378,10 +1378,16 @@ namespace Oxide.Plugins
                 else
                 {
                     RunUpdateQuery($"UPDATE rtp_player SET lastused='{Time.realtimeSinceStartup}' WHERE userid='{userid}' AND name='{TeleportTimers[userid].targetName}'");
-                    TeleportTimers[userid].timer.Destroy();
-                    TeleportTimers.Remove(userid);
-                    TPRTimers[userid].timer.Destroy();
-                    TPRTimers.Remove(userid);
+                    if (TeleportTimers.ContainsKey(userid))
+                    {
+                        TeleportTimers[userid].timer.Destroy();
+                        TeleportTimers.Remove(userid);
+                    }
+                    if (TPRTimers.ContainsKey(userid))
+                    {
+                        TPRTimers[userid].timer.Destroy();
+                        TPRTimers.Remove(userid);
+                    }
                 }
             }
         }
