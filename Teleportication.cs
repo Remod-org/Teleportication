@@ -10,6 +10,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Data.SQLite;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -22,7 +23,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.0.3")]
+    [Info("Teleportication", "RFC1920", "1.0.4")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -35,6 +36,8 @@ namespace Oxide.Plugins
 
         private readonly Dictionary<ulong, TPTimer> TeleportTimers = new Dictionary<ulong, TPTimer>();
         private readonly Dictionary<ulong, TPTimer> CooldownTimers = new Dictionary<ulong, TPTimer>();
+        private readonly Dictionary<ulong, TPRTimer> TPRTimers = new Dictionary<ulong, TPRTimer>();
+        //private readonly static Dictionary<ulong, TPATimer> TPATimers = new Dictionary<ulong, TPATimer>();
         private const string permTP_Use = "teleportication.use";
         private const string permTP_TPB = "teleportication.tpb";
         private const string permTP_TPR = "teleportication.tpr";
@@ -63,6 +66,20 @@ namespace Oxide.Plugins
             public string targetName;
             public Vector3 targetLocation;
         }
+
+        public class TPRTimer
+        {
+            public Timer timer;
+            public float start;
+            public float countdown;
+            public string type;
+        }
+
+//        public class TPATimer
+//        {
+//            public System.Timers.Timer timer;
+//            public ulong sourceId;
+//        }
         #endregion
 
         #region Message
@@ -163,7 +180,11 @@ namespace Oxide.Plugins
                 ["importhelp"] = "/tpadmin import {r/n} {y/1/yes/true}\n\t import RTeleportion or NTeleportation\n\tadd y or 1 or true to actually import\n\totherwise display data only",
                 ["importdone"] = "Homes have been imported from datafile '{0}'",
                 ["importing"] = "Importing data for {0}",
-                ["tpcancelled"] = "Teleport cancelled!"
+                ["tpcancelled"] = "Teleport cancelled!",
+                ["tprself"] = "You cannot tpr to yourself.",
+                ["tprnotify"] = "{0} has requested to be teleported to you.\nType /tpa to accept.",
+                ["tpanotify"] = "{0} has accepted your teleport request.  You will be teleported in {1} seconds.",
+                ["tprreject"] = "{0} rejected your request.  Or, the request timed out."
             }, this);
         }
 
@@ -634,18 +655,92 @@ namespace Oxide.Plugins
         [Command("tpr")]
         private void CmdTpr(IPlayer iplayer, string command, string[] args)
         {
+#if DEBUG
+            string debug = string.Join(",", args); Puts($"{debug}");
+#endif
             if (!iplayer.HasPermission(permTP_TPR)) { Message(iplayer, "notauthorized"); return; }
-            //configData.TPR.AutoAccept
+            if (args.Length == 1)
+            {
+                var target = FindPlayerByName(args[0]);
+                if (target != null)
+                {
+                    var sourceId = Convert.ToUInt64(iplayer.Id);
+                    var targetId = target.userID;
+                    if (sourceId == targetId)
+                    {
+#if DEBUG
+                        Puts("Allowing tpr to self in debug mode.");
+#else
+                        Message(iplayer, "tprself");
+                        return;
+#endif
+                    }
+                    if (configData.Types["TPR"].AutoAccept)
+                    {
+                        Puts("AutoTPA!");
+                        if (IsFriend(sourceId, targetId))
+                        {
+                            TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown, source = (iplayer.Object as BasePlayer), targetName = iplayer.Name, targetLocation = target.transform.position });
+                        }
+                    }
+                    else
+                    {
+                        TPRSetup(sourceId, targetId);
+                    }
+                }
+            }
         }
 
         [Command("tpa")]
         private void CmdTpa(IPlayer iplayer, string command, string[] args)
         {
-            //configData.TPR.AutoAccept
+#if DEBUG
+            Puts($"Checking for tpr request for {iplayer.Id}");
+#endif
+            if (TPRRequests.ContainsValue(Convert.ToUInt64(iplayer.Id)))
+            {
+                var sourceId = TPRRequests.FirstOrDefault(x => x.Value == Convert.ToUInt64(iplayer.Id)).Key;
+                Puts($"Found a request from {sourceId.ToString()}");
+                IPlayer src = covalence.Players.FindPlayerById(sourceId.ToString());
+                if (src != null)
+                {
+                    Puts($"Setting timer for {src.Name} to tp to {iplayer.Name}");
+                    TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown, source = (src.Object as BasePlayer), targetName = iplayer.Name, targetLocation = (iplayer.Object as BasePlayer).transform.position });
+                    HandleTimer(sourceId, true);
+                    Message(src, "tpanotify", iplayer.Name, configData.Types["TPR"].CountDown.ToString());
+                }
+            }
         }
         #endregion
 
         #region main
+        void TPRSetup(ulong sourceId, ulong targetId)
+        {
+            if (TPRRequests.ContainsValue(targetId))
+            {
+                foreach (var item in TPRRequests.Where(kvp => kvp.Value == targetId).ToList())
+                {
+                    TPRRequests.Remove(item.Key);
+                }
+            }
+            TPRRequests.Add(sourceId, targetId);
+            TPRTimers.Add(sourceId, new TPRTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown });
+            NextTick(() => { TPRNotification(); });
+        }
+
+        void TPRNotification()
+        {
+            foreach(var req in TPRRequests)
+            {
+                if (TPRTimers.ContainsKey(req.Key))
+                {
+                    IPlayer src = covalence.Players.FindPlayerById(req.Key.ToString());
+                    IPlayer tgt = covalence.Players.FindPlayerById(req.Value.ToString());
+                    Message(tgt, "tprnotify", src.Name);
+                }
+            }
+        }
+
         private bool CanTeleport(BasePlayer player, string location, string type, bool requester = true)
         {
             if((player as BaseCombatEntity).IsHostile() && configData.Types[type].BlockOnHostile)
@@ -1018,6 +1113,19 @@ namespace Oxide.Plugins
         #endregion
 
         #region helpers
+        private static BasePlayer FindPlayerByName(string name)
+        {
+            BasePlayer result = null;
+            foreach (BasePlayer current in BasePlayer.activePlayerList)
+            {
+                if (current.displayName.Equals(name, StringComparison.OrdinalIgnoreCase)
+                    || current.UserIDString.Contains(name, CompareOptions.OrdinalIgnoreCase)
+                    || current.displayName.Contains(name, CompareOptions.OrdinalIgnoreCase))
+                    result = current;
+            }
+            return result;
+        }
+
         private static bool GetBoolValue(string value)
         {
             if (value == null) return false;
@@ -1072,7 +1180,7 @@ namespace Oxide.Plugins
             return result;
         }
 
-        public static string PositionToGrid(Vector3 position) // From GrTeleport
+        public static string PositionToGrid(Vector3 position) // From GrTeleport for display only
         {
             var r = new Vector2(World.Size / 2 + position.x, World.Size / 2 + position.z);
             var x = Mathf.Floor(r.x / 146.3f) % 26;
@@ -1246,7 +1354,7 @@ namespace Oxide.Plugins
             if(configData.Options.useTeams)
             {
                 BasePlayer player = BasePlayer.FindByID(playerid);
-                if(player.currentTeam != (long)0)
+                if(player.currentTeam != 0)
                 {
                     RelationshipManager.PlayerTeam playerTeam = RelationshipManager.Instance.FindTeam(player.currentTeam);
                     if(playerTeam == null) return false;
@@ -1272,6 +1380,8 @@ namespace Oxide.Plugins
                     RunUpdateQuery($"UPDATE rtp_player SET lastused='{Time.realtimeSinceStartup}' WHERE userid='{userid}' AND name='{TeleportTimers[userid].targetName}'");
                     TeleportTimers[userid].timer.Destroy();
                     TeleportTimers.Remove(userid);
+                    TPRTimers[userid].timer.Destroy();
+                    TPRTimers.Remove(userid);
                 }
             }
         }
@@ -1527,8 +1637,12 @@ namespace Oxide.Plugins
             public bool AllowBypass;
             public double BypassAmount;
         }
+        #endregion
 
         #region IMPORT
+        /// <summary>
+        ///  Classes for import of data from N/RTeleportation
+        /// </summary>
         class HomeData
         {
             [JsonProperty("l")]
@@ -1537,7 +1651,6 @@ namespace Oxide.Plugins
             [JsonProperty("t")]
             public TeleportData Teleports { get; set; } = new TeleportData();
         }
-
         class TeleportData
         {
             [JsonProperty("a")]
@@ -1610,7 +1723,6 @@ namespace Oxide.Plugins
             }
         }
         #endregion IMPORT
-        #endregion
 
         #region defaults
         private void CreateOrClearTables(bool drop = true)
