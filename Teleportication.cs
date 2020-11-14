@@ -19,11 +19,10 @@ using UnityEngine;
 // TODO:
 //    Cooldown verification and typing
 //    Economics for bypass
-//    Auto TPA
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.0.5")]
+    [Info("Teleportication", "RFC1920", "1.0.6")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -677,10 +676,13 @@ namespace Oxide.Plugins
                     }
                     if (configData.Types["TPR"].AutoAccept)
                     {
-                        Puts("AutoTPA!");
                         if (IsFriend(sourceId, targetId))
                         {
+#if DEBUG
+                            Puts("AutoTPA!");
+#endif
                             TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown, source = (iplayer.Object as BasePlayer), targetName = iplayer.Name, targetLocation = target.transform.position });
+                            HandleTimer(sourceId, true);
                         }
                     }
                     else
@@ -764,28 +766,28 @@ namespace Oxide.Plugins
                     return false;
                 }
             }
-            var oncargo = player.GetComponentInParent<CargoShip>();
-            var onballoon = player.GetComponentInParent<HotAirBalloon>();
-            var onlift = player.GetComponentInParent<Lift>();
 
             string monName = NearMonument(player);
-            string cave = NearCave(player);
+            if (monName != null)
+            {
+                if (monName.Contains("Oilrig") && configData.Types[type].BlockOnRig)
+                {
+                    Message(player.IPlayer, "montooclose", type.ToLower(), monName);
+                    return false;
+                }
+                else if (monName.Contains("Excavator") && configData.Types[type].BlockOnExcavator)
+                {
+                    Message(player.IPlayer, "montooclose", type.ToLower(), monName);
+                    return false;
+                }
+                else if (configData.Types[type].BlockOnMonuments)
+                {
+                    Message(player.IPlayer, "montooclose", type.ToLower(), monName);
+                    return false;
+                }
+            }
 
-            if (monName != null && monName.Contains("Oilrig") && configData.Types[type].BlockOnRig)
-            {
-                Message(player.IPlayer, "montooclose", type.ToLower(), monName);
-                return false;
-            }
-            else if (monName != null && monName.Contains("Excavator") && configData.Types[type].BlockOnExcavator)
-            {
-                Message(player.IPlayer, "montooclose", type.ToLower(), monName);
-                return false;
-            }
-            else if (monName != null && configData.Types[type].BlockOnMonuments)
-            {
-                Message(player.IPlayer, "montooclose", type.ToLower(), monName);
-                return false;
-            }
+            string cave = NearCave(player);
             if (cave != null && configData.Types[type].BlockOnCave)
             {
                 Message(player.IPlayer, "cavetooclose", cave);
@@ -796,21 +798,26 @@ namespace Oxide.Plugins
                 Message(player.IPlayer, "safezone", type.ToLower());
                 return false;
             }
+
+            var oncargo = player.GetComponentInParent<CargoShip>();
             if (oncargo && configData.Types[type].BlockOnCargo)
             {
                 Message(player.IPlayer, "oncargo", type.ToLower());
                 return false;
             }
+            var onballoon = player.GetComponentInParent<HotAirBalloon>();
             if (onballoon && configData.Types[type].BlockOnBalloon)
             {
                 Message(player.IPlayer, "onballoon", type.ToLower());
                 return false;
             }
+            var onlift = player.GetComponentInParent<Lift>();
             if (onlift && configData.Types[type].BlockOnLift)
             {
                 Message(player.IPlayer, "onlift", type.ToLower());
                 return false;
             }
+
             if (AboveWater(player) && configData.Types[type].BlockOnWater)
             {
                 Message(player.IPlayer, "onwater", type.ToLower());
@@ -866,13 +873,15 @@ namespace Oxide.Plugins
             if (configData.Options.HomeRequireFoundation)
             {
 #if DEBUG
-                Puts($"Checking for foundation at target {position.ToString()}");
+                Puts($"Checking for foundation/floor at target {position.ToString()}");
 #endif
                 RaycastHit hitinfo;
-                if (Physics.Raycast(position, Vector3.down, out hitinfo, 0.1f, blockLayer))
+                if (Physics.Raycast(position, Vector3.down, out hitinfo, 0.2f, blockLayer))
                 {
                     var entity = hitinfo.GetEntity();
-                    if (entity.PrefabName.Contains("foundation") || position.y < entity.WorldSpaceBounds().ToBounds().max.y)
+                    if (entity.ShortPrefabName.Equals("foundation") || entity.ShortPrefabName.Equals("floor")
+                        || entity.ShortPrefabName.Equals("foundation.triangle") || entity.ShortPrefabName.Equals("floor.triangle")
+                        || position.y < entity.WorldSpaceBounds().ToBounds().max.y)
                     {
 #if DEBUG
                         Puts("  Found one.  Checking block perms, etc...");
@@ -905,7 +914,7 @@ namespace Oxide.Plugins
                 Vector3 center = entity.CenterPoint();
 
                 List<BaseEntity> ents = new List<BaseEntity>();
-                Vis.Entities<BaseEntity>(center, 1.5f, ents);
+                Vis.Entities(center, 1.5f, ents);
                 foreach (BaseEntity wall in ents)
                 {
                     if (wall.name.Contains("external.high"))
@@ -939,7 +948,7 @@ namespace Oxide.Plugins
                         return true;
                     }
                 }
-                else if (entity.PrefabName.Contains("foundation.prefab") || entity.PrefabName.Contains("floor.prefab"))
+                else if (entity.ShortPrefabName.Equals("foundation") || entity.ShortPrefabName.Equals("floor"))
                 {
                     if (Math.Abs(center.x - position.x) < 0.7f && Math.Abs(center.z - position.z) < 0.7f)
                     {
@@ -1236,7 +1245,7 @@ namespace Oxide.Plugins
                     Puts("  Adding Outpost target");
 #endif
                     List<BaseEntity> ents = new List<BaseEntity>();
-                    Vis.Entities<BaseEntity>(monument.transform.position, 50, ents);
+                    Vis.Entities(monument.transform.position, 50, ents);
                     foreach(BaseEntity entity in ents)
                     {
                         if(entity.PrefabName.Contains("piano"))
@@ -1396,6 +1405,9 @@ namespace Oxide.Plugins
         {
             if (CooldownTimers.ContainsKey(userid))
             {
+#if DEBUG
+                Puts($"HandleCooldown found a timer for {userid.ToString()}");
+#endif
                 if (start)
                 {
                     // HandleMoney(string userid, double bypass, bool withdraw = false, bool deposit = false)
@@ -1403,7 +1415,6 @@ namespace Oxide.Plugins
                     // Work in progress :(
                     if (canbypass && HandleMoney(userid.ToString(), bypassamount, dobypass))
                     {
-
                     }
                     else
                     {
@@ -1411,6 +1422,7 @@ namespace Oxide.Plugins
                         Puts($"Creating a cooldown timer for {userid}, timer will be set to {CooldownTimers[userid].countdown.ToString()}");
 #endif
                         CooldownTimers[userid].timer = timer.Once(CooldownTimers[userid].countdown, () => { HandleCooldown(userid, false, canbypass, bypassamount, dobypass); });
+//                        CooldownTimers[userid].timer = timer.Once(CooldownTimers[userid].countdown, () => { Teleport(CooldownTimers[userid].source, CooldownTimers[userid].targetLocation); });
                     }
                 }
                 else
@@ -1427,7 +1439,10 @@ namespace Oxide.Plugins
         {
             if(CooldownTimers.ContainsKey(userid))
             {
-                if (CooldownTimers[userid].type == type) return true;
+                if (CooldownTimers[userid].type == type)// && CooldownTimers[userid].timer.)
+                {
+                    return true;
+                }
             }
             return false;
         }
