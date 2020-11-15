@@ -22,7 +22,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.0.6")]
+    [Info("Teleportication", "RFC1920", "1.0.7")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -34,9 +34,9 @@ namespace Oxide.Plugins
         private SortedDictionary<string, Vector3> cavePos  = new SortedDictionary<string, Vector3>();
 
         private readonly Dictionary<ulong, TPTimer> TeleportTimers = new Dictionary<ulong, TPTimer>();
-        private readonly Dictionary<ulong, TPTimer> CooldownTimers = new Dictionary<ulong, TPTimer>();
+        private readonly Dictionary<string, Dictionary<ulong, TPTimer>> CooldownTimers = new Dictionary<string, Dictionary<ulong, TPTimer>>();
         private readonly Dictionary<ulong, TPRTimer> TPRTimers = new Dictionary<ulong, TPRTimer>();
-        //private readonly static Dictionary<ulong, TPATimer> TPATimers = new Dictionary<ulong, TPATimer>();
+
         private const string permTP_Use = "teleportication.use";
         private const string permTP_TPB = "teleportication.tpb";
         private const string permTP_TPR = "teleportication.tpr";
@@ -47,6 +47,7 @@ namespace Oxide.Plugins
 
         private ConfigData configData;
         private SQLiteConnection sqlConnection;
+        private TextInfo TI = CultureInfo.CurrentCulture.TextInfo;
         private string connStr;
 
         private readonly string logfilename = "log";
@@ -73,12 +74,6 @@ namespace Oxide.Plugins
             public float countdown;
             public string type;
         }
-
-//        public class TPATimer
-//        {
-//            public System.Timers.Timer timer;
-//            public ulong sourceId;
-//        }
         #endregion
 
         #region Message
@@ -103,6 +98,14 @@ namespace Oxide.Plugins
             sqlConnection.Open();
 
             LoadConfigVariables();
+
+            CooldownTimers.Add("Home", new Dictionary<ulong, TPTimer>());
+            CooldownTimers.Add("Town", new Dictionary<ulong, TPTimer>());
+            CooldownTimers.Add("TPA", new Dictionary<ulong, TPTimer>());
+            CooldownTimers.Add("TPR", new Dictionary<ulong, TPTimer>());
+            CooldownTimers.Add("Bandit", new Dictionary<ulong, TPTimer>());
+            CooldownTimers.Add("Outpost", new Dictionary<ulong, TPTimer>());
+
             LoadData();
 
             AddCovalenceCommand("home", "CmdHomeTeleport");
@@ -189,10 +192,13 @@ namespace Oxide.Plugins
 
         private void OnNewSave()
         {
-            // Wipe homes and town, etc.
-            CreateOrClearTables(true);
-            // Set outpost and bandit
-            FindMonuments();
+            if (configData.Options.WipeOnNewSave)
+            {
+                // Wipe homes and town, etc.
+                CreateOrClearTables(true);
+                // Set outpost and bandit
+                FindMonuments();
+            }
         }
 
         void LoadData()
@@ -252,27 +258,33 @@ namespace Oxide.Plugins
 
                         if (datFile != null)
                         {
-                            var tpfile = Interface.Oxide.DataFileSystem.GetFile(datFile);
-                            tpfile.Settings.NullValueHandling = NullValueHandling.Ignore;
-                            tpfile.Settings.Converters = new JsonConverter[] { new UnityVector3Converter(), new CustomComparerDictionaryCreationConverter<string>(StringComparer.OrdinalIgnoreCase) };
-                            Dictionary<ulong, HomeData> tphomes = tpfile.ReadObject<Dictionary<ulong, HomeData>>();
-
-                            foreach (KeyValuePair<ulong,HomeData> userHomes in tphomes)
+                            try
                             {
-                                foreach (var home in userHomes.Value.Locations)
+                                var tpfile = Interface.Oxide.DataFileSystem.GetFile(datFile);
+                                tpfile.Settings.NullValueHandling = NullValueHandling.Ignore;
+                                tpfile.Settings.Converters = new JsonConverter[] { new UnityVector3Converter(), new CustomComparerDictionaryCreationConverter<string>(StringComparer.OrdinalIgnoreCase) };
+                                Dictionary<ulong, HomeData> tphomes = tpfile.ReadObject<Dictionary<ulong, HomeData>>();
+                                foreach (KeyValuePair<ulong, HomeData> userHomes in tphomes)
                                 {
-                                    if (doit)
+                                    foreach (var home in userHomes.Value.Locations)
                                     {
-                                        RunUpdateQuery($"INSERT OR REPLACE INTO rtp_player VALUES('{userHomes.Key}', '{home.Key}', '{home.Value}', '0', 0)");
-                                        Message(iplayer, "importing", userHomes.Key);
-                                    }
-                                    else
-                                    {
-                                        Message(iplayer, $"{userHomes.Key}: Home {home.Key} location {home.Value}");
+                                        if (doit)
+                                        {
+                                            RunUpdateQuery($"INSERT OR REPLACE INTO rtp_player VALUES('{userHomes.Key}', '{home.Key}', '{home.Value}', '0', 0)");
+                                            Message(iplayer, "importing", userHomes.Key);
+                                        }
+                                        else
+                                        {
+                                            Message(iplayer, $"{userHomes.Key}: Home {home.Key} location {home.Value}");
+                                        }
                                     }
                                 }
+                                if (doit) Message(iplayer, "importdone", datFile);
                             }
-                            if(doit) Message(iplayer, "importdone", datFile);
+                            catch
+                            {
+                                Puts($"Failed to open datafile, {datFile}");
+                            }
                         }
                         break;
                     case "wipe":
@@ -501,15 +513,15 @@ namespace Oxide.Plugins
                 {
                     if (!TeleportTimers.ContainsKey(player.userID))
                     {
-                        TeleportTimers.Add(player.userID, new TPTimer() { type="home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CountDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
-                        HandleTimer(player.userID, true);
-                        CooldownTimers.Add(player.userID, new TPTimer() { type="home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CoolDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
-                        HandleCooldown(player.userID, true);
+                        TeleportTimers.Add(player.userID, new TPTimer() { type="Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CountDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
+                        HandleTimer(player.userID, "Home", true);
+                        CooldownTimers["Home"].Add(player.userID, new TPTimer() { type="Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CoolDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
+                        HandleCooldown(player.userID, "Home", true);
                         Message(iplayer, "teleportinghome", home, configData.Types["Home"].CountDown.ToString());
                     }
                     else if (TeleportTimers[player.userID].countdown == 0)
                     {
-                        Teleport(player, StringToVector3(homes[0]));
+                        Teleport(player, StringToVector3(homes[0]), "home");
                     }
                 }
             }
@@ -545,75 +557,39 @@ namespace Oxide.Plugins
             {
                 case "town":
                     if (!iplayer.HasPermission(permTP_Town)) { Message(iplayer, "notauthorized"); return; }
-                    List<string> town = (List<string>) RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name='town'");
-                    if (town != null)
-                    {
-                        if (CanTeleport(player, town[0], "Town"))
-                        {
-                            if (!TeleportTimers.ContainsKey(player.userID))
-                            {
-                                TeleportTimers.Add(player.userID, new TPTimer() { type="town", start = Time.realtimeSinceStartup, countdown = configData.Types["Town"].CountDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(town[0]) });
-                                HandleTimer(player.userID, true);
-                                CooldownTimers.Add(player.userID, new TPTimer() { type = "town", start = Time.realtimeSinceStartup, countdown = configData.Types["Town"].CoolDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(town[0]) });
-                                HandleCooldown(player.userID, true);
-                                Message(iplayer, "teleporting", command, configData.Types["Town"].CountDown.ToString());
-                            }
-                            else if(TeleportTimers[player.userID].countdown == 0)
-                            {
-                                Teleport(player, StringToVector3(town[0]));
-                            }
-                        }
-                        break;
-                    }
-                    Message(iplayer, "locationnotset", Lang("town"));
-                    break;
+                    goto case "all";
                 case "bandit":
                     if (!iplayer.HasPermission(permTP_Bandit)) { Message(iplayer, "notauthorized"); return; }
-                    List<string> bandit = (List<string>) RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name='bandit'");
-                    if (bandit != null)
-                    {
-                        if (CanTeleport(player, bandit[0], "Bandit"))
-                        {
-                            if (!TeleportTimers.ContainsKey(player.userID))
-                            {
-                                TeleportTimers.Add(player.userID, new TPTimer() { type="bandit", start = Time.realtimeSinceStartup, countdown = configData.Types["Bandit"].CountDown, source = player, targetName = Lang("bandit"), targetLocation = StringToVector3(bandit[0]) });
-                                HandleTimer(player.userID, true);
-                                CooldownTimers.Add(player.userID, new TPTimer() { type = "bandit", start = Time.realtimeSinceStartup, countdown = configData.Types["Bandit"].CoolDown, source = player, targetName = Lang("bandit"), targetLocation = StringToVector3(bandit[0]) });
-                                HandleCooldown(player.userID, true);
-                                Message(iplayer, "teleporting", command, configData.Types["Bandit"].CountDown.ToString());
-                            }
-                            else if(TeleportTimers[player.userID].countdown == 0)
-                            {
-                                Teleport(player, StringToVector3(bandit[0]));
-                            }
-                        }
-                        break;
-                    }
-                    Message(iplayer, "locationnotset", Lang("bandit"));
-                    break;
+                    goto case "all";
                 case "outpost":
                     if (!iplayer.HasPermission(permTP_Outpost)) { Message(iplayer, "notauthorized"); return; }
-                    List<string> outpost = (List<string>) RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name='outpost'");
-                    if (outpost != null)
+                    goto case "all";
+                case "all":
+                    List<string> target = (List<string>) RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='{command}'");
+                    string type = TI.ToTitleCase(command);
+                    if (target != null)
                     {
-                        if (CanTeleport(player, outpost[0], "Outpost"))
+                        if (CanTeleport(player, target[0], type))
                         {
                             if (!TeleportTimers.ContainsKey(player.userID))
                             {
-                                TeleportTimers.Add(player.userID, new TPTimer() { type="outpost", start = Time.realtimeSinceStartup, countdown = configData.Types["Outpost"].CountDown, source = player, targetName = Lang("outpost"), targetLocation = StringToVector3(outpost[0]) });
-                                HandleTimer(player.userID, true);
-                                CooldownTimers.Add(player.userID, new TPTimer() { type = "outpost", start = Time.realtimeSinceStartup, countdown = configData.Types["Outpost"].CoolDown, source = player, targetName = Lang("outpost"), targetLocation = StringToVector3(outpost[0]) });
-                                HandleCooldown(player.userID, true);
-                                Message(iplayer, "teleporting", command, configData.Types["Outpost"].CountDown.ToString());
+                                TeleportTimers.Add(player.userID, new TPTimer() { type = type, start = Time.realtimeSinceStartup, countdown = configData.Types[type].CountDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(target[0]) });
+                                HandleTimer(player.userID, type, true);
+                                CooldownTimers[type].Add(player.userID, new TPTimer() { type = type, start = Time.realtimeSinceStartup, countdown = configData.Types[type].CoolDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(target[0]) });
+                                HandleCooldown(player.userID, type, true);
+                                Message(iplayer, "teleporting", command, configData.Types[type].CountDown.ToString());
                             }
                             else if(TeleportTimers[player.userID].countdown == 0)
                             {
-                                Teleport(player, StringToVector3(outpost[0]));
+                                Teleport(player, StringToVector3(target[0]), command);
                             }
                         }
                         break;
                     }
-                    Message(iplayer, "locationnotset", Lang("outpost"));
+                    Message(iplayer, "locationnotset", Lang(command));
+                    break;
+                default:
+                    Message(iplayer, "locationnotset", Lang(command));
                     break;
             }
         }
@@ -629,10 +605,10 @@ namespace Oxide.Plugins
 
                 if (CanTeleport(player, oldloc.ToString(), "TPB"))
                 {
-                    TeleportTimers.Add(player.userID, new TPTimer() { type="tpb", start = Time.realtimeSinceStartup, countdown = configData.Types["TPB"].CountDown, source = player, targetName = Lang("tpb"), targetLocation = oldloc });
-                    HandleTimer(player.userID, true);
-                    CooldownTimers.Add(player.userID, new TPTimer() { type = "tpb", start = Time.realtimeSinceStartup, countdown = configData.Types["TPB"].CoolDown, source = player, targetName = Lang("tpb"), targetLocation = oldloc });
-                    HandleCooldown(player.userID, true);
+                    TeleportTimers.Add(player.userID, new TPTimer() { type="TPB", start = Time.realtimeSinceStartup, countdown = configData.Types["TPB"].CountDown, source = player, targetName = Lang("tpb"), targetLocation = oldloc });
+                    HandleTimer(player.userID, "TPB", true);
+                    CooldownTimers["TPB"].Add(player.userID, new TPTimer() { type = "TPB", start = Time.realtimeSinceStartup, countdown = configData.Types["TPB"].CoolDown, source = player, targetName = Lang("tpb"), targetLocation = oldloc });
+                    HandleCooldown(player.userID, "TPB", true);
                     Message(iplayer, "teleporting", Lang("tpb"), configData.Types["TPB"].CountDown.ToString());
                     SavedPoints.Remove(player.userID);
                 }
@@ -647,7 +623,7 @@ namespace Oxide.Plugins
         private void CmdTpc(IPlayer iplayer, string command, string[] args)
         {
             var player = iplayer.Object as BasePlayer;
-            HandleTimer(player.userID);
+            HandleTimer(player.userID, "tpc");
             Message(iplayer, "tpcancelled");
         }
 
@@ -682,7 +658,7 @@ namespace Oxide.Plugins
                             Puts("AutoTPA!");
 #endif
                             TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown, source = (iplayer.Object as BasePlayer), targetName = iplayer.Name, targetLocation = target.transform.position });
-                            HandleTimer(sourceId, true);
+                            HandleTimer(sourceId, "TPR", true);
                         }
                     }
                     else
@@ -708,7 +684,7 @@ namespace Oxide.Plugins
                 {
                     Puts($"Setting timer for {src.Name} to tp to {iplayer.Name}");
                     TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown, source = (src.Object as BasePlayer), targetName = iplayer.Name, targetLocation = (iplayer.Object as BasePlayer).transform.position });
-                    HandleTimer(sourceId, true);
+                    HandleTimer(sourceId, "TPR", true);
                     Message(src, "tpanotify", iplayer.Name, configData.Types["TPR"].CountDown.ToString());
                 }
             }
@@ -754,17 +730,11 @@ namespace Oxide.Plugins
                 Message(player.IPlayer, "onhostile", type, pt);
                 return false;
             }
-            if (CooldownTimers.ContainsKey(player.userID))
+            if (HasCooldown(player.userID, type))
             {
-#if DEBUG
-                Puts("Found a cooldown timer");
-#endif
-                if (CooldownTimers[player.userID].type == type.ToLower())
-                {
-                    string timesince = Math.Floor(CooldownTimers[player.userID].start + CooldownTimers[player.userID].countdown - Time.realtimeSinceStartup).ToString();
-                    Message(player.IPlayer, "cooldown", type.ToLower(), timesince);
-                    return false;
-                }
+                string timesince = Math.Floor(CooldownTimers[type][player.userID].start + CooldownTimers[type][player.userID].countdown - Time.realtimeSinceStartup).ToString();
+                Message(player.IPlayer, "cooldown", type.ToLower(), timesince);
+                return false;
             }
 
             string monName = NearMonument(player);
@@ -1376,13 +1346,13 @@ namespace Oxide.Plugins
             return false;
         }
 
-        public void HandleTimer(ulong userid, bool start = false)
+        public void HandleTimer(ulong userid, string type, bool start = false)
         {
             if (TeleportTimers.ContainsKey(userid))
             {
                 if (start)
                 {
-                    TeleportTimers[userid].timer = timer.Once(TeleportTimers[userid].countdown, () => { Teleport(TeleportTimers[userid].source, TeleportTimers[userid].targetLocation); });
+                    TeleportTimers[userid].timer = timer.Once(TeleportTimers[userid].countdown, () => { Teleport(TeleportTimers[userid].source, TeleportTimers[userid].targetLocation, type); });
                 }
                 else
                 {
@@ -1401,48 +1371,41 @@ namespace Oxide.Plugins
             }
         }
 
-        public void HandleCooldown(ulong userid, bool start = false, bool canbypass = false, double bypassamount = 0, bool dobypass = false)
+        public void HandleCooldown(ulong userid, string type, bool start = false, bool canbypass = false, double bypassamount = 0, bool dobypass = false, bool kill = false)
         {
-            if (CooldownTimers.ContainsKey(userid))
+            TPTimer check = new TPTimer();
+            if(!CooldownTimers[type].ContainsKey(userid))
+            {
+                CooldownTimers[type].Add(userid, new TPTimer());
+            }
+#if DEBUG
+            Puts($"HandleCooldown found a timer for {userid.ToString()}");
+#endif
+            if (start)
             {
 #if DEBUG
-                Puts($"HandleCooldown found a timer for {userid.ToString()}");
+                Puts($"Creating a cooldown timer for {userid}, timer will be set to {configData.Types[type].CoolDown.ToString()} seconds.");
 #endif
-                if (start)
-                {
-                    // HandleMoney(string userid, double bypass, bool withdraw = false, bool deposit = false)
-                    // Check available funds
-                    // Work in progress :(
-                    if (canbypass && HandleMoney(userid.ToString(), bypassamount, dobypass))
-                    {
-                    }
-                    else
-                    {
+                CooldownTimers[type][userid].timer = timer.Once(configData.Types[type].CoolDown, () => { HandleCooldown(userid, type, false, canbypass, bypassamount, dobypass, true); });
+            }
+            else if (kill)
+            {
 #if DEBUG
-                        Puts($"Creating a cooldown timer for {userid}, timer will be set to {CooldownTimers[userid].countdown.ToString()}");
+                Puts($"Destroying cooldown timer for {userid}");
 #endif
-                        CooldownTimers[userid].timer = timer.Once(CooldownTimers[userid].countdown, () => { HandleCooldown(userid, false, canbypass, bypassamount, dobypass); });
-//                        CooldownTimers[userid].timer = timer.Once(CooldownTimers[userid].countdown, () => { Teleport(CooldownTimers[userid].source, CooldownTimers[userid].targetLocation); });
-                    }
-                }
-                else
-                {
-#if DEBUG
-                    Puts($"Destroying cooldown timer for {userid}");
-#endif
-                    CooldownTimers[userid].timer.Destroy();
-                    CooldownTimers.Remove(userid);
-                }
+                CooldownTimers[type][userid].timer.Destroy();
+                CooldownTimers[type].Remove(userid);
             }
         }
+
         public bool HasCooldown(ulong userid, string type)
         {
-            if(CooldownTimers.ContainsKey(userid))
+            if(CooldownTimers[type].ContainsKey(userid))
             {
-                if (CooldownTimers[userid].type == type)// && CooldownTimers[userid].timer.)
-                {
-                    return true;
-                }
+#if DEBUG
+                Puts("Found a cooldown timer");
+#endif
+                return true;
             }
             return false;
         }
@@ -1501,11 +1464,11 @@ namespace Oxide.Plugins
         public void TeleportToPlayer(BasePlayer player, BasePlayer target) => Teleport(player, target.transform.position);
         public void TeleportToPosition(BasePlayer player, float x, float y, float z) => Teleport(player, new Vector3(x, y, z));
 
-        public void Teleport(BasePlayer player, Vector3 position)
+        public void Teleport(BasePlayer player, Vector3 position, string type="")
         {
             SaveLocation(player);
-            HandleTimer(player.userID);
-            HandleCooldown(player.userID);
+            HandleTimer(player.userID, type);
+            HandleCooldown(player.userID, type);
 
             if(player.net?.connection != null) player.SetPlayerFlag(BasePlayer.PlayerFlags.ReceivingSnapshot, true);
 
@@ -1534,7 +1497,6 @@ namespace Oxide.Plugins
         private void LoadConfigVariables()
         {
             configData = Config.ReadObject<ConfigData>();
-
             configData.Version = Version;
             SaveConfig(configData);
         }
@@ -1559,20 +1521,27 @@ namespace Oxide.Plugins
             config.Options.MaximumTemp = 40f;
             config.Types["Home"].CountDown = 5f;
             config.Types["Home"].CoolDown = 120f;
+            config.Types["Home"].DailyLimit = 30f;
             config.Types["Town"].CountDown = 5f;
             config.Types["Town"].CoolDown = 120f;
+            config.Types["Town"].DailyLimit = 30f;
             config.Types["Bandit"].CountDown = 5f;
             config.Types["Bandit"].CoolDown = 120f;
+            config.Types["Bandit"].DailyLimit = 30f;
             config.Types["Bandit"].BlockOnHostile = true;
             config.Types["Outpost"].CountDown = 5f;
             config.Types["Outpost"].CoolDown = 120f;
+            config.Types["Outpost"].DailyLimit = 30f;
             config.Types["Outpost"].BlockOnHostile = true;
             config.Types["TPB"].CountDown = 5f;
             config.Types["TPB"].CoolDown = 120f;
+            config.Types["TPB"].DailyLimit = 30f;
             config.Types["TPC"].CountDown = 5f;
             config.Types["TPC"].CoolDown = 120f;
+            config.Types["TPC"].DailyLimit = 30f;
             config.Types["TPR"].CountDown = 5f;
             config.Types["TPR"].CoolDown = 120f;
+            config.Types["TPR"].DailyLimit = 30f;
 
             SaveConfig(config);
         }
@@ -1611,6 +1580,7 @@ namespace Oxide.Plugins
             public bool HomeRemoveInvalid = true;
             public bool HonorBuildingPrivilege = true;
             public bool HonorRelationships = false;
+            public bool WipeOnNewSave = true;
             public bool AutoGenBandit;
             public bool AutoGenOutpost;
             public float HomeMinimumDistance;
@@ -1624,17 +1594,7 @@ namespace Oxide.Plugins
             public string ListCommand;
             public string RemoveCommand;
         }
-
-        private class VIPSetting : CmdOptions
-        {
-            public string perm;
-            public float VIPDailyLimit = 10f;
-            public float VIPCountDown = 0f;
-            public float VIPCoolDown = 0f;
-            public bool VIPAllowBypass = true;
-            public double VIPBypassAmount = 0f;
-        }
-        private class CmdOptions
+        private class CmdOptions : VIPOptions
         {
             public bool BlockOnHurt = false;
             public bool BlockOnCold = false;
@@ -1657,6 +1617,32 @@ namespace Oxide.Plugins
             public float CoolDown;
             public bool AllowBypass;
             public double BypassAmount;
+        }
+        private class VIPOptions
+        {
+            public Dictionary<string, VIPSetting> VIPSettings { get; set; }
+
+            public VIPOptions(string perm="teleportication.vip")
+            {
+                VIPSettings.Add(perm, new VIPSetting());
+            }
+        }
+        public class VIPSetting
+        {
+            public float VIPDailyLimit { get; set; }
+            public float VIPCountDown { get; set; }
+            public float VIPCoolDown { get; set; }
+            public bool VIPAllowBypass { get; set; }
+            public double VIPBypassAmount { get; set; }
+
+            public VIPSetting()
+            {
+                VIPDailyLimit = 100f;
+                VIPCountDown = 0f;
+                VIPCoolDown = 0f;
+                VIPAllowBypass = true;
+                VIPBypassAmount = 0f;
+            }
         }
         #endregion
 

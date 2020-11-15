@@ -1,7 +1,7 @@
-## Teleportication (Work in progress)
+## Teleportication
 Nextgen Teleport plugin for Rust
 
-Uses Friends, Clans, Rust teams, RustIO
+Uses Friends, Clans, Rust teams
 
 A lot of the familiar commands from older teleport plugins are still there, with some exceptions.  This is where the similarites end.
 
@@ -49,6 +49,7 @@ A lot of the familiar commands from older teleport plugins are still there, with
     "StrictFoundationCheck": true,
     "HonorBuildingPrivilege": true,
     "HonorRelationships": false,
+    "WipeOnNewSave": true,
     "AutoGenBandit": true,
     "AutoGenOutpost": true,
     "DefaultMonumentSize": 120.0,
@@ -93,6 +94,7 @@ A lot of the familiar commands from older teleport plugins are still there, with
     - `HomeRemoveInvalid` -- If the home is no longer valid due to building privilege, destruction, etc., remove it.
     - `HonorBuildingPrivilege` -- If set, require building privilege to use a home.
     - `HonorRelationships` -- If set, honor any of the useXXX features to determine ability to teleport to a home.
+    - `WipeOnNewSave` -- If set, wipe home, town, bandit, outpost on a new map save.
     - `AutoGenBandit` -- Generate bandit location once per wipe.
     - `AutoGenOutpost` -- Generate outpost location once per wipe.
     - `DefaultMonumentSize` -- Most monuments do not contain a size parameter, so this would be the default in that case.
@@ -120,7 +122,7 @@ A lot of the familiar commands from older teleport plugins are still there, with
     - `BlockOnSwimming`: false -- Block if player is swimming.
     - `BlockOnWater`: false -- Block if player is above water. 
     - `AutoAccept`: false -- Only valid for TPR to automatically TPA.
-    - `DailyLimit`: 0.0 -- If set to other than 0, the limit for this action per day.
+    - `DailyLimit`: 0.0 -- (NOT YET WORKING) If set to other than 0, the limit for this action per day.
     - `CountDown`: 5.0 -- Waiting period for action on home, tpr, etc.
     - `CoolDown`: 120.0  -- Waiting period until next teleport of this type
 
@@ -134,7 +136,7 @@ In-memory objects keep track of previous location for tpb, pending tpr/tpa, etc.
 
 ### Status
 
-  1. CoolDown is not yet working
-  2. Economics is a pending feature (for bypassing CoolDown, etc.)
+  1. Economics is a pending feature (for bypassing CoolDown, etc.)
+  2. VIP Settings pending
   3. Various things may not be working, but this is being released for testing.
 
