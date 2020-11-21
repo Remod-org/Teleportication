@@ -21,7 +21,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.0.8")]
+    [Info("Teleportication", "RFC1920", "1.0.9")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -401,9 +401,10 @@ namespace Oxide.Plugins
             string debug = string.Join(",", args); Puts($"{debug}");
 #endif
             if (!iplayer.HasPermission(permTP_Use)) { Message(iplayer, "notauthorized"); return; }
+            if (iplayer.Id == "server_console") return;
 
             var player = iplayer.Object as BasePlayer;
-            if(args.Length < 1 || (args.Length == 1 && args[0] == configData.Options.ListCommand))
+            if (args.Length < 1 || (args.Length == 1 && args[0] == configData.Options.ListCommand))
             {
                 // List homes
                 string available = Lang("homesavail") + "\n";
@@ -411,6 +412,7 @@ namespace Oxide.Plugins
                 using (SQLiteConnection c = new SQLiteConnection(connStr))
                 {
                     c.Open();
+
                     using (SQLiteCommand q = new SQLiteCommand($"SELECT name, location, lastused FROM rtp_player WHERE userid='{player.userID}'", c))
                     {
                         using (SQLiteDataReader home = q.ExecuteReader())
@@ -447,12 +449,13 @@ namespace Oxide.Plugins
                     Message(iplayer, "nohomes");
                 }
             }
-            else if(args.Length == 2 && (args[0] == configData.Options.ListCommand) && configData.Options.HonorRelationships)
+            else if (args.Length == 2 && (args[0] == configData.Options.ListCommand) && configData.Options.HonorRelationships)
             {
+                // List a friend's homes
                 var target = BasePlayer.Find(args[1]);
-                if(IsFriend(player.userID, target.userID))
+                if (IsFriend(player.userID, target.userID) && target != null)
                 {
-                    string available = Lang("homesavailfor", null, target.displayName) + "\n";
+                    string available = Lang("homesavailfor", null, RemoveSpecialCharacters(target.displayName)) + "\n";
                     bool hashomes = false;
                     using (SQLiteConnection c = new SQLiteConnection(connStr))
                     {
@@ -475,7 +478,7 @@ namespace Oxide.Plugins
                             }
                         }
                     }
-                    if(hashomes)
+                    if (hashomes)
                     {
                         Message(iplayer, available);
                     }
@@ -489,7 +492,7 @@ namespace Oxide.Plugins
                     Message(iplayer, "notauthorized");
                 }
             }
-            else if(args.Length == 2 && args[0] == configData.Options.SetCommand)
+            else if (args.Length == 2 && args[0] == configData.Options.SetCommand)
             {
                 // Set home
                 string reason;
@@ -504,11 +507,11 @@ namespace Oxide.Plugins
                     Message(iplayer, "setblocked", reason);
                 }
             }
-            else if(args.Length == 2 && args[0] == configData.Options.RemoveCommand)
+            else if (args.Length == 2 && args[0] == configData.Options.RemoveCommand)
             {
                 // Remove home
                 string home = args[1];
-                List<string> found = (List<string>) RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'");
+                List<string> found = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'");
                 if (found != null)
                 {
                     RunUpdateQuery($"DELETE FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'");
@@ -519,12 +522,45 @@ namespace Oxide.Plugins
                     Message(iplayer, "homemissing");
                 }
             }
-            else if(args.Length == 1)
+            else if (args.Length == 2)
+            {
+                // Use a friend's home: /home Playername home1
+                var target = BasePlayer.Find(args[0]);
+                if (IsFriend(player.userID, target.userID) && target != null)
+                {
+                    string home = args[1];
+                    List<string> homes = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{target.userID}' AND name='{home}'");
+
+                    if (CanTeleport(player, homes[0], "Home"))
+                    {
+                        if (!TeleportTimers.ContainsKey(player.userID))
+                        {
+                            TeleportTimers.Add(player.userID, new TPTimer() { type = "Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CountDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
+                            HandleTimer(player.userID, "Home", true);
+                            CooldownTimers["Home"].Add(player.userID, new TPTimer() { type = "Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CoolDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
+                            HandleCooldown(player.userID, "Home", true);
+
+                            float limit = GetDailyLimit(player.userID, "Home");
+                            if (limit > 0)
+                            {
+                                Message(iplayer, "remaining", limit.ToString(), "Home");
+                            }
+
+                            Message(iplayer, "teleportinghome", home + "(" + RemoveSpecialCharacters(target.displayName) + ")", configData.Types["Home"].CountDown.ToString());
+                        }
+                        else if (TeleportTimers[player.userID].countdown == 0)
+                        {
+                            Teleport(player, StringToVector3(homes[0]), "home");
+                        }
+                    }
+                }
+            }
+            else if (args.Length == 1)
             {
                 // Use an already set home
                 string home = args[0];
-                List<string> homes = (List<string>) RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'");
-                if(homes == null)
+                List<string> homes = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'");
+                if (homes == null)
                 {
                     Message(iplayer, "homemissing");
                     return;
@@ -544,9 +580,9 @@ namespace Oxide.Plugins
                 {
                     if (!TeleportTimers.ContainsKey(player.userID))
                     {
-                        TeleportTimers.Add(player.userID, new TPTimer() { type="Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CountDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
+                        TeleportTimers.Add(player.userID, new TPTimer() { type = "Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CountDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
                         HandleTimer(player.userID, "Home", true);
-                        CooldownTimers["Home"].Add(player.userID, new TPTimer() { type="Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CoolDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
+                        CooldownTimers["Home"].Add(player.userID, new TPTimer() { type = "Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CoolDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
                         HandleCooldown(player.userID, "Home", true);
 
                         float limit = GetDailyLimit(player.userID, "Home");
@@ -568,6 +604,7 @@ namespace Oxide.Plugins
         [Command("town")]
         private void CmdTownTeleport(IPlayer iplayer, string command, string[] args)
         {
+            if (iplayer.Id == "server_console") return;
             var player = iplayer.Object as BasePlayer;
             if(args.Length > 0)
             {
@@ -641,6 +678,7 @@ namespace Oxide.Plugins
         [Command("tpb")]
         private void CmdTpb(IPlayer iplayer, string command, string[] args)
         {
+            if (iplayer.Id == "server_console") return;
             if (!iplayer.HasPermission(permTP_TPB)) { Message(iplayer, "notauthorized"); return; }
             var player = iplayer.Object as BasePlayer;
             if(SavedPoints.ContainsKey(player.userID))
@@ -672,6 +710,7 @@ namespace Oxide.Plugins
         [Command("tpc")]
         private void CmdTpc(IPlayer iplayer, string command, string[] args)
         {
+            if (iplayer.Id == "server_console") return;
             var player = iplayer.Object as BasePlayer;
             HandleTimer(player.userID, "tpc");
             Message(iplayer, "tpcancelled");
@@ -680,6 +719,7 @@ namespace Oxide.Plugins
         [Command("tpr")]
         private void CmdTpr(IPlayer iplayer, string command, string[] args)
         {
+            if (iplayer.Id == "server_console") return;
 #if DEBUG
             string debug = string.Join(",", args); Puts($"{debug}");
 #endif
@@ -722,6 +762,7 @@ namespace Oxide.Plugins
         [Command("tpa")]
         private void CmdTpa(IPlayer iplayer, string command, string[] args)
         {
+            if (iplayer.Id == "server_console") return;
 #if DEBUG
             Puts($"Checking for tpr request for {iplayer.Id}");
 #endif
@@ -1179,6 +1220,11 @@ namespace Oxide.Plugins
         #endregion
 
         #region helpers
+        public static string RemoveSpecialCharacters(string str)
+        {
+            return Regex.Replace(str, "[^a-zA-Z0-9_.]+", "", RegexOptions.Compiled);
+        }
+
         private static BasePlayer FindPlayerByName(string name)
         {
             BasePlayer result = null;
