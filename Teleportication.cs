@@ -106,6 +106,7 @@ namespace Oxide.Plugins
             CooldownTimers.Add("Home", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("Town", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("TPA", new Dictionary<ulong, TPTimer>());
+            CooldownTimers.Add("TPB", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("TPR", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("Bandit", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("Outpost", new Dictionary<ulong, TPTimer>());
@@ -115,6 +116,7 @@ namespace Oxide.Plugins
             DailyLimits.Add("Home", new Dictionary<ulong, float>());
             DailyLimits.Add("Town", new Dictionary<ulong, float>());
             DailyLimits.Add("TPA", new Dictionary<ulong, float>());
+            DailyLimits.Add("TPB", new Dictionary<ulong, float>());
             DailyLimits.Add("TPR", new Dictionary<ulong, float>());
             DailyLimits.Add("Bandit", new Dictionary<ulong, float>());
             DailyLimits.Add("Outpost", new Dictionary<ulong, float>());
@@ -1664,6 +1666,7 @@ namespace Oxide.Plugins
                 { "Home", new Dictionary<ulong, float>() },
                 { "Town", new Dictionary<ulong, float>() },
                 { "TPA", new Dictionary<ulong, float>() },
+                { "TPB", new Dictionary<ulong, float>() },
                 { "TPR", new Dictionary<ulong, float>() },
                 { "Bandit", new Dictionary<ulong, float>() },
                 { "Outpost", new Dictionary<ulong, float>() }
