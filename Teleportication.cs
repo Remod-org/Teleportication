@@ -21,7 +21,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.0.9")]
+    [Info("Teleportication", "RFC1920", "1.1.0")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -267,17 +267,17 @@ namespace Oxide.Plugins
                     case "import":
                         // args[1] == r/n
                         // Import from N/RTeleportation
-                        string datFile = null;
+                        string otpplug = null;
                         bool doit = false;
                         if (args.Length > 1)
                         {
                             switch (args[1])
                             {
                                 case "r":
-                                    datFile = "RTeleportationHome";
+                                    otpplug = "RTeleportation";
                                     break;
                                 case "n":
-                                    datFile = "NTeleportationHome";
+                                    otpplug = "NTeleportation";
                                     break;
                                 default:
                                     Message(iplayer, "importhelp");
@@ -289,11 +289,12 @@ namespace Oxide.Plugins
                             doit = GetBoolValue(args[2]);
                         }
 
-                        if (datFile != null)
+                        if (otpplug != null)
                         {
                             try
                             {
-                                var tpfile = Interface.Oxide.DataFileSystem.GetFile(datFile);
+                                // Get user homes from data file
+                                var tpfile = Interface.Oxide.DataFileSystem.GetFile(otpplug + "Home");
                                 tpfile.Settings.NullValueHandling = NullValueHandling.Ignore;
                                 tpfile.Settings.Converters = new JsonConverter[] { new UnityVector3Converter(), new CustomComparerDictionaryCreationConverter<string>(StringComparer.OrdinalIgnoreCase) };
                                 Dictionary<ulong, HomeData> tphomes = tpfile.ReadObject<Dictionary<ulong, HomeData>>();
@@ -312,11 +313,37 @@ namespace Oxide.Plugins
                                         }
                                     }
                                 }
-                                if (doit) Message(iplayer, "importdone", datFile);
+                                if (doit) Message(iplayer, "importdone", otpplug + "Home");
                             }
                             catch
                             {
-                                Puts($"Failed to open datafile, {datFile}");
+                                Puts($"Failed to open datafile, {otpplug}Home");
+                            }
+
+                            try
+                            {
+                                // Get town location from config
+                                var d = new DataFileSystem(Interface.Oxide.ConfigDirectory);
+                                var x = d.GetFiles("", $"{otpplug}.json");
+                                OtherConfigData otpcfg = d.GetFile(otpplug).ReadObject<OtherConfigData>();
+                                string townloc = otpcfg.Town.Location.ToString().Replace("  ", "").Replace(" ", ",");
+
+                                if (townloc != null)
+                                {
+                                    if (doit)
+                                    {
+                                        RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('town', '({townloc})')");
+                                        Message(iplayer, "importing", $"Town: ({townloc})");
+                                    }
+                                    else
+                                    {
+                                        Message(iplayer, $"Found town location ({townloc})");
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                Puts($"Failed to open cfgfile for {otpplug}");
                             }
                         }
                         break;
@@ -340,7 +367,7 @@ namespace Oxide.Plugins
                                     {
                                         string nm = svr.GetValue(0).ToString();
                                         string lc = svr.GetValue(1).ToString();
-                                        loc += "\t" + FirstCharToUpper(nm) + ": " + lc.TrimEnd() + "\n";
+                                        loc += "\t" + TI.ToTitleCase(nm) + ": " + lc.TrimEnd() + "\n";
                                     }
                                 }
                             }
@@ -539,6 +566,11 @@ namespace Oxide.Plugins
                         {
                             TeleportTimers.Add(player.userID, new TPTimer() { type = "Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CountDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
                             HandleTimer(player.userID, "Home", true);
+                            if (CooldownTimers["Home"].ContainsKey(player.userID))
+                            {
+                                CooldownTimers["Home"][player.userID].timer.Destroy();
+                                CooldownTimers["Home"].Remove(player.userID);
+                            }
                             CooldownTimers["Home"].Add(player.userID, new TPTimer() { type = "Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CoolDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
                             HandleCooldown(player.userID, "Home", true);
 
@@ -584,6 +616,11 @@ namespace Oxide.Plugins
                     {
                         TeleportTimers.Add(player.userID, new TPTimer() { type = "Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CountDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
                         HandleTimer(player.userID, "Home", true);
+                        if (CooldownTimers["Home"].ContainsKey(player.userID))
+                        {
+                            CooldownTimers["Home"][player.userID].timer.Destroy();
+                            CooldownTimers["Home"].Remove(player.userID);
+                        }
                         CooldownTimers["Home"].Add(player.userID, new TPTimer() { type = "Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CoolDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
                         HandleCooldown(player.userID, "Home", true);
 
@@ -652,6 +689,11 @@ namespace Oxide.Plugins
                             {
                                 TeleportTimers.Add(player.userID, new TPTimer() { type = type, start = Time.realtimeSinceStartup, countdown = configData.Types[type].CountDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(target[0]) });
                                 HandleTimer(player.userID, type, true);
+                                if (CooldownTimers[type].ContainsKey(player.userID))
+                                {
+                                    CooldownTimers[type][player.userID].timer.Destroy();
+                                    CooldownTimers[type].Remove(player.userID);
+                                }
                                 CooldownTimers[type].Add(player.userID, new TPTimer() { type = type, start = Time.realtimeSinceStartup, countdown = configData.Types[type].CoolDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(target[0]) });
                                 HandleCooldown(player.userID, type, true);
                                 float limit = GetDailyLimit(player.userID, type);
@@ -689,8 +731,14 @@ namespace Oxide.Plugins
 
                 if (CanTeleport(player, oldloc.ToString(), "TPB"))
                 {
+                    if (TeleportTimers.ContainsKey(player.userID)) TeleportTimers.Remove(player.userID);
                     TeleportTimers.Add(player.userID, new TPTimer() { type="TPB", start = Time.realtimeSinceStartup, countdown = configData.Types["TPB"].CountDown, source = player, targetName = Lang("tpb"), targetLocation = oldloc });
                     HandleTimer(player.userID, "TPB", true);
+                    if (CooldownTimers["TPB"].ContainsKey(player.userID))
+                    {
+                        CooldownTimers["TPB"][player.userID].timer.Destroy();
+                        CooldownTimers["TPB"].Remove(player.userID);
+                    }
                     CooldownTimers["TPB"].Add(player.userID, new TPTimer() { type = "TPB", start = Time.realtimeSinceStartup, countdown = configData.Types["TPB"].CoolDown, source = player, targetName = Lang("tpb"), targetLocation = oldloc });
                     HandleCooldown(player.userID, "TPB", true);
                     float limit = GetDailyLimit(player.userID, "TPB");
@@ -749,6 +797,7 @@ namespace Oxide.Plugins
 #if DEBUG
                             Puts("AutoTPA!");
 #endif
+                            if (TeleportTimers.ContainsKey(sourceId)) TeleportTimers.Remove(sourceId);
                             TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown, source = (iplayer.Object as BasePlayer), targetName = iplayer.Name, targetLocation = target.transform.position });
                             HandleTimer(sourceId, "TPR", true);
                         }
@@ -780,6 +829,7 @@ namespace Oxide.Plugins
 #if DEBUG
                     Puts($"Setting timer for {src.Name} to tp to {iplayer.Name}");
 #endif
+                    if (TeleportTimers.ContainsKey(sourceId)) TeleportTimers.Remove(sourceId);
                     TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown, source = (src.Object as BasePlayer), targetName = iplayer.Name, targetLocation = (iplayer.Object as BasePlayer).transform.position });
                     HandleTimer(sourceId, "TPR", true);
 
@@ -1256,17 +1306,6 @@ namespace Oxide.Plugins
                 default:
                     return false;
             }
-        }
-
-        public static string FirstCharToUpper(string s)
-        {
-            // Check for empty string.
-            if (string.IsNullOrEmpty(s))
-            {
-                return string.Empty;
-            }
-            // Return char and concat substring.
-            return char.ToUpper(s[0]) + s.Substring(1);
         }
 
         private void DoLog(string message, int indent = 0)
@@ -1863,6 +1902,132 @@ namespace Oxide.Plugins
         /// <summary>
         ///  Classes for import of data from N/RTeleportation
         /// </summary>
+        class OtherConfigData
+        {
+            public SettingsData Settings { get; set; }
+            public GameVersionData GameVersion { get; set; }
+            public AdminSettingsData Admin { get; set; }
+            public HomesSettingsData Home { get; set; }
+            public TPRData TPR { get; set; }
+            public TownData Town { get; set; }
+            public TownData Outpost { get; set; }
+            public TownData Bandit { get; set; }
+            public VersionNumber Version { get; set; }
+        }
+        class SettingsData
+        {
+            public string ChatName { get; set; }
+            public bool HomesEnabled { get; set; }
+            public bool TPREnabled { get; set; }
+            public bool TownEnabled { get; set; }
+            public bool OutpostEnabled { get; set; }
+            public bool BanditEnabled { get; set; }
+            public bool InterruptTPOnHurt { get; set; }
+            public bool InterruptTPOnCold { get; set; }
+            public bool InterruptTPOnHot { get; set; }
+            public bool InterruptTPOnHostile { get; set; }
+            public bool InterruptTPOnSafe { get; set; }
+            public bool InterruptTPOnBalloon { get; set; }
+            public bool InterruptTPOnCargo { get; set; }
+            public bool InterruptTPOnRig { get; set; }
+            public bool InterruptTPOnExcavator { get; set; }
+            public bool InterruptTPOnLift { get; set; }
+            public bool InterruptTPOnMonument { get; set; }
+            public bool InterruptTPOnMounted { get; set; }
+            public bool InterruptTPOnSwimming { get; set; }
+            public bool InterruptAboveWater{ get; set; }
+            public bool StrictFoundationCheck { get; set; }
+            public float CaveDistanceSmall { get; set; }
+            public float CaveDistanceMedium { get; set; }
+            public float CaveDistanceLarge { get; set; }
+            public float DefaultMonumentSize { get; set; }
+            public float MinimumTemp { get; set; }
+            public float MaximumTemp { get; set; }
+            public Dictionary<string, string> BlockedItems { get; set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            public string BypassCMD { get; set; }
+            public bool UseEconomics { get; set; }
+            public bool UseServerRewards { get; set; }
+            public bool WipeOnUpgradeOrChange { get; set; }
+            public bool AutoGenOutpost { get; set; }
+            public bool AutoGenBandit { get; set; }
+        }
+        class GameVersionData
+        {
+            public int Network { get; set; }
+            public int Save { get; set; }
+            public string Level { get; set; }
+            public string LevelURL { get; set; }
+            public int WorldSize { get; set; }
+            public int Seed { get; set; }
+        }
+        class AdminSettingsData
+        {
+            public bool AnnounceTeleportToTarget { get; set; }
+            public bool UseableByAdmins { get; set; }
+            public bool UseableByModerators { get; set; }
+            public int LocationRadius { get; set; }
+            public int TeleportNearDefaultDistance { get; set; }
+        }
+        class HomesSettingsData
+        {
+            public int HomesLimit { get; set; }
+            public Dictionary<string, int> VIPHomesLimits { get; set; }
+            public int Cooldown { get; set; }
+            public int Countdown { get; set; }
+            public int DailyLimit { get; set; }
+            public Dictionary<string, int> VIPDailyLimits { get; set; }
+            public Dictionary<string, int> VIPCooldowns { get; set; }
+            public Dictionary<string, int> VIPCountdowns { get; set; }
+            public int LocationRadius { get; set; }
+            public bool ForceOnTopOfFoundation { get; set; }
+            public bool CheckFoundationForOwner { get; set; }
+            public bool UseFriends { get; set; }
+            public bool UseClans { get; set; }
+            public bool UseTeams { get; set; }
+            public bool UsableOutOfBuildingBlocked { get; set; }
+            public bool UsableIntoBuildingBlocked { get; set; }
+            public bool CupOwnerAllowOnBuildingBlocked { get; set; }
+            public bool AllowIceberg { get; set; }
+            public bool AllowCave { get; set; }
+            public bool AllowCraft { get; set; }
+            public bool AllowAboveFoundation { get; set; }
+            public bool CheckValidOnList { get; set; }
+            public int Pay { get; set; }
+            public int Bypass { get; set; }
+        }
+        class TPRData
+        {
+            public int Cooldown { get; set; }
+            public int Countdown { get; set; }
+            public int DailyLimit { get; set; }
+            public Dictionary<string, int> VIPDailyLimits { get; set; }
+            public Dictionary<string, int> VIPCooldowns { get; set; }
+            public Dictionary<string, int> VIPCountdowns { get; set; }
+            public int RequestDuration { get; set; }
+            public bool OffsetTPRTarget { get; set; }
+            public bool AutoAcceptTPR { get; set; }
+            public bool BlockTPAOnCeiling { get; set; }
+            public bool UsableOutOfBuildingBlocked { get; set; }
+            public bool UsableIntoBuildingBlocked { get; set; }
+            public bool CupOwnerAllowOnBuildingBlocked { get; set; }
+            public bool AllowCraft { get; set; }
+            public int Pay { get; set; }
+            public int Bypass { get; set; }
+        }
+        class TownData
+        {
+            public int Cooldown { get; set; }
+            public int Countdown { get; set; }
+            public int DailyLimit { get; set; }
+            public Dictionary<string, int> VIPDailyLimits { get; set; }
+            public Dictionary<string, int> VIPCooldowns { get; set; }
+            public Dictionary<string, int> VIPCountdowns { get; set; }
+            public string Location { get; set; }
+            public bool UsableOutOfBuildingBlocked { get; set; }
+            public bool AllowCraft { get; set; }
+            public int Pay { get; set; }
+            public int Bypass { get; set; }
+        }
         class HomeData
         {
             [JsonProperty("l")]
