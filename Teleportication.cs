@@ -21,7 +21,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.1.0")]
+    [Info("Teleportication", "RFC1920", "1.1.1")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -158,6 +158,11 @@ namespace Oxide.Plugins
             }
 
             FindMonuments();
+        }
+
+        private void Unload()
+        {
+            sqlConnection.Close();
         }
 
         protected override void LoadDefaultMessages()
