@@ -69,18 +69,21 @@ A lot of the familiar commands from older teleport plugins are still there, with
       "BlockOnRig": false,
       "BlockOnMonuments": false,
       "BlockOnHostile": false,
-      "BlockOnSafe": false,
+      "BlockOnSafe": true,
       "BlockOnBalloon": false,
       "BlockOnCargo": false,
       "BlockOnExcavator": false,
       "BlockOnLift": false,
-      "BlockOnMounted": false,
+      "BlockOnMounted": true,
       "BlockOnSwimming": false,
       "BlockOnWater": false,
       "AutoAccept": false,
-      "DailyLimit": 0.0,
+      "DailyLimit": 10.0,
       "CountDown": 5.0,
-      "CoolDown": 120.0
+      "CoolDown": 30.0,
+      "AllowBypass": false,
+      "BypassAmount": 0.0,
+      "VIPSettings": null
     },
   ...
 }
@@ -126,6 +129,29 @@ A lot of the familiar commands from older teleport plugins are still there, with
     - `CountDown`: 5.0 -- Waiting period for action on home, tpr, etc.
     - `CoolDown`: 120.0  -- Waiting period until next teleport of this type
 
+#### For each of home, town, bandit, outpost, tpr, VIP settings can be added as follows:
+
+The default is "VIPSettings": null, ...  Change them as needed, creating your own permission name, e.g. teleportication.vip1, and settings:
+
+```json
+      "VIPSettings": {
+        "teleportication.vip1": {
+          "VIPDailyLimit": 20.0,
+          "VIPCountDown": 5.0,
+          "VIPCoolDown": 10.0,
+          "VIPAllowBypass": true,
+          "VIPBypassAmount": 1.0
+        },
+        "teleportication.vip2": {
+          "VIPDailyLimit": 30.0,
+          "VIPCountDown": 3.0,
+          "VIPCoolDown": 5.0,
+          "VIPAllowBypass": true,
+          "VIPBypassAmount": 1.0
+        }
+      }
+```
+
 ### Details
 
 Despite some similarites, the configuration and data files from other teleport plugins are NOT compatible.
@@ -137,6 +163,4 @@ In-memory objects keep track of previous location for tpb, pending tpr/tpa, etc.
 ### Status
 
   1. Economics is a pending feature (for bypassing CoolDown, etc.)
-  2. VIP Settings pending
-  3. Various things may not be working, but this is being released for testing.
 

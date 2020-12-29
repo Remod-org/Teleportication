@@ -17,11 +17,10 @@ using System.Text.RegularExpressions;
 using UnityEngine;
 
 // TODO:
-// VIP Settings
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.1.1")]
+    [Info("Teleportication", "RFC1920", "1.1.2")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -1620,7 +1619,7 @@ namespace Oxide.Plugins
             // Check for player VIP permissions
             foreach (var perm in configData.Types[type].VIPSettings)
             {
-                if (!iplayer.HasPermission(perm.Key))
+                if (iplayer.HasPermission(perm.Key))
                 {
                     float newlimit = perm.Value.VIPDailyLimit;
                     if (newlimit == 0)
