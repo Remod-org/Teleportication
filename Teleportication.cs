@@ -20,7 +20,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.1.3")]
+    [Info("Teleportication", "RFC1920", "1.1.4")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -55,7 +55,7 @@ namespace Oxide.Plugins
         private bool dolog = false;
 
         [PluginReference]
-        private readonly Plugin Friends, Clans, Economics, ServerRewards, GridAPI;
+        private readonly Plugin Friends, Clans, Economics, ServerRewards, GridAPI, NoEscape;
         private readonly int blockLayer = LayerMask.GetMask("Construction");
 
         public class TPTimer
@@ -185,6 +185,7 @@ namespace Oxide.Plugins
                 ["homeset"] = "Home {0} has been set.",
                 ["homeremoved"] = "Home {0} has been removed.",
                 ["setblocked"] = "Home cannot be set here - {0}",
+                ["blocked"] = "You cannot teleport while blocked!",
                 ["invalidhome"] = "Home invalid - {0}",
                 ["lastused"] = " Last used: {0} minutes ago",
                 ["lastday"] = " Not used since server restart",
@@ -1094,6 +1095,15 @@ namespace Oxide.Plugins
                 return false;
             }
 
+            if (configData.Options.useNoEscape && NoEscape != null)
+            {
+                bool isblocked = (bool)NoEscape?.Call("IsBlocked", player);
+                if (isblocked)
+                {
+                    Message(player.IPlayer, "blocked");
+                    return false;
+                }
+            }
             // Passed!
             return true;
         }
@@ -1961,6 +1971,7 @@ namespace Oxide.Plugins
             public bool useTeams = false;
             public bool useEconomics = false;
             public bool useServerRewards = false;
+            public bool useNoEscape = false;
             public bool HomeRequireFoundation = true;
             public bool StrictFoundationCheck = true;
             public bool HomeRemoveInvalid = true;
