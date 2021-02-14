@@ -20,7 +20,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.1.2")]
+    [Info("Teleportication", "RFC1920", "1.1.3")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -38,6 +38,7 @@ namespace Oxide.Plugins
         private int ts;
 
         private const string permTP_Use = "teleportication.use";
+        private const string permTP_TP  = "teleportication.tp";
         private const string permTP_TPB = "teleportication.tpb";
         private const string permTP_TPR = "teleportication.tpr";
         private const string permTP_Town = "teleportication.town";
@@ -53,7 +54,8 @@ namespace Oxide.Plugins
         private readonly string logfilename = "log";
         private bool dolog = false;
 
-        private readonly Plugin Friends, Clans, Economics, ServerRewards;
+        [PluginReference]
+        private readonly Plugin Friends, Clans, Economics, ServerRewards, GridAPI;
         private readonly int blockLayer = LayerMask.GetMask("Construction");
 
         public class TPTimer
@@ -107,6 +109,7 @@ namespace Oxide.Plugins
             CooldownTimers.Add("TPA", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("TPB", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("TPR", new Dictionary<ulong, TPTimer>());
+            CooldownTimers.Add("TP", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("Bandit", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("Outpost", new Dictionary<ulong, TPTimer>());
 #if DEBUG
@@ -117,6 +120,7 @@ namespace Oxide.Plugins
             DailyLimits.Add("TPA", new Dictionary<ulong, float>());
             DailyLimits.Add("TPB", new Dictionary<ulong, float>());
             DailyLimits.Add("TPR", new Dictionary<ulong, float>());
+            DailyLimits.Add("TP", new Dictionary<ulong, float>());
             DailyLimits.Add("Bandit", new Dictionary<ulong, float>());
             DailyLimits.Add("Outpost", new Dictionary<ulong, float>());
 
@@ -131,11 +135,13 @@ namespace Oxide.Plugins
             AddCovalenceCommand("tpb", "CmdTpb");
             AddCovalenceCommand("tpc", "CmdTpc");
             AddCovalenceCommand("tpr", "CmdTpr");
+            AddCovalenceCommand("tp", "CmdTp");
             AddCovalenceCommand("tpadmin", "CmdTpAdmin");
 
             permission.RegisterPermission(permTP_Use, this);
             permission.RegisterPermission(permTP_TPB, this);
             permission.RegisterPermission(permTP_TPR, this);
+            permission.RegisterPermission(permTP_TP,  this);
             permission.RegisterPermission(permTP_Town, this);
             permission.RegisterPermission(permTP_Bandit, this);
             permission.RegisterPermission(permTP_Outpost, this);
@@ -217,6 +223,9 @@ namespace Oxide.Plugins
                 ["teleportinghome"] = "Teleporting to home {0} in {1} seconds...",
                 ["BackupDone"] = "Teleportication database has been backed up to {0}",
                 ["importhelp"] = "/tpadmin import {r/n} {y/1/yes/true}\n\t import RTeleportion or NTeleportation\n\tadd y or 1 or true to actually import\n\totherwise display data only",
+                ["tphelp"] = "/tp X,Z OR /tp X,Y,Z -- e.g. /tp 121,-535 will teleport the player to that location on the map.\nIf Y is not specified, player will be moved to ground level.",
+                ["cannottp"] = "Cannot teleport to desired location.",
+                ["obstructed"] = "The target location is too close to construction.",
                 ["importdone"] = "Homes have been imported from datafile '{0}'",
                 ["importing"] = "Importing data for {0}",
                 ["tpcancelled"] = "Teleport cancelled!",
@@ -257,6 +266,64 @@ namespace Oxide.Plugins
         #endregion
 
         #region commands
+        [Command("tp")]
+        private void CmdTp(IPlayer iplayer, string command, string[] args)
+        {
+#if DEBUG
+            string debug = string.Join(",", args); Puts($"{debug}");
+#endif
+            if (!iplayer.HasPermission(permTP_TP)) { Message(iplayer, "notauthorized"); return; }
+            if (args.Length > 0)
+            {
+                string[] input = args[0].Split(',');
+                if (input.Count() > 1)
+                {
+                    ulong userid = ulong.Parse(iplayer.Id);
+                    string parsed = null;
+                    Vector3 pos = new Vector3();
+                    if(input.Count() == 3)
+                    {
+                        parsed = input[0] + "," + input[1] + "," + input[2];
+                        pos = StringToVector3(parsed);
+                    }
+                    else
+                    {
+                        parsed = input[0] + ",0," + input[1];
+                        pos = StringToVector3(parsed);
+                        if (TerrainMeta.HeightMap.GetHeight(pos) > pos.y)
+                        {
+                            // Ensure they are sent above the terrain
+                            pos.y = TerrainMeta.HeightMap.GetHeight(pos);
+                        }
+                    }
+
+                    if (CanTeleport(iplayer.Object as BasePlayer, parsed, "TP"))
+                    {
+                        if (!TeleportTimers.ContainsKey(userid))
+                        {
+                            TeleportTimers.Add(userid, new TPTimer() { type = "TP", start = Time.realtimeSinceStartup, countdown = configData.Types["TP"].CountDown, source = iplayer.Object as BasePlayer, targetName = "TP", targetLocation = pos });
+                            HandleTimer(userid, "TP", true);
+                                if (CooldownTimers["TP"].ContainsKey(userid))
+                                {
+                                    CooldownTimers["TP"][userid].timer.Destroy();
+                                    CooldownTimers["TP"].Remove(userid);
+                                }
+                                CooldownTimers["TP"].Add(userid, new TPTimer() { type = "TP", start = Time.realtimeSinceStartup, countdown = configData.Types["TP"].CoolDown, source = iplayer.Object as BasePlayer, targetName = "TP", targetLocation = pos });
+                                HandleCooldown(userid, "TP", true);
+                        }
+                        else if (TeleportTimers[userid].countdown == 0)
+                        {
+                            Teleport(iplayer.Object as BasePlayer, pos, "TP");
+                        }
+                    }
+                }
+            }
+            else
+            {
+                Message(iplayer, "tphelp");
+            }
+        }
+
         [Command("tpadmin")]
         private void CmdTpAdmin(IPlayer iplayer, string command, string[] args)
         {
@@ -659,6 +726,24 @@ namespace Oxide.Plugins
                     {
                         case "town":
                             Message(iplayer, "townset", player.transform.position.ToString());
+                            if (configData.Options.AddTownMapMarker)
+                            {
+                                foreach (var mm in BaseEntity.FindObjectsOfType<MapMarkerGenericRadius>().Where(x => x.name == "town").ToList())
+                                {
+                                    mm.Kill();
+                                }
+                                MapMarkerGenericRadius marker = GameManager.server.CreateEntity("assets/prefabs/tools/map/genericradiusmarker.prefab", player.transform.position) as MapMarkerGenericRadius;
+                                if (marker != null)
+                                {
+                                    marker.alpha = 0.6f;
+                                    marker.color1 = Color.green;
+                                    marker.color2 = Color.white;
+                                    marker.name = "town";
+                                    marker.radius = 0.2f;
+                                    marker.Spawn();
+                                    marker.SendUpdate();
+                                }
+                            }
                             break;
                         case "bandit":
                             Message(iplayer, "banditset", player.transform.position.ToString());
@@ -888,6 +973,12 @@ namespace Oxide.Plugins
 
         private bool CanTeleport(BasePlayer player, string location, string type, bool requester = true)
         {
+            // OBSTRUCTION
+            if (type == "TP" && Obstructed(StringToVector3(location)))
+            {
+                Message(player.IPlayer, "obstructed");
+                return false;
+            }
             // LIMIT
             var userLimits = new Dictionary<ulong, float>();
             DailyLimits.TryGetValue(type, out userLimits);
@@ -1183,6 +1274,18 @@ namespace Oxide.Plugins
             return true;
         }
 
+        // Check a location to verify that it is not obstructed by construction.
+        public bool Obstructed(Vector3 location)
+        {
+            var ents = new List<BaseEntity>();
+            Vis.Entities(location, 1, ents, blockLayer);
+            foreach(var ent in ents)
+            {
+                return true;
+            }
+            return false;
+        }
+
         public bool AboveWater(BasePlayer player)
         {
             var pos = player.transform.position;
@@ -1337,16 +1440,24 @@ namespace Oxide.Plugins
             return result;
         }
 
-        public static string PositionToGrid(Vector3 position) // From GrTeleport for display only
+        public string PositionToGrid(Vector3 position) // From GrTeleport for display only
         {
-            var r = new Vector2(World.Size / 2 + position.x, World.Size / 2 + position.z);
-            var x = Mathf.Floor(r.x / 146.3f) % 26;
-            var z = Mathf.Floor(World.Size / 146.3f) - Mathf.Floor(r.y / 146.3f);
+            if (GridAPI != null)
+            {
+                var g = (string[]) GridAPI.CallHook("GetGrid", position);
+                return string.Join("", g);
+            }
+            else
+            {
+                var r = new Vector2(World.Size / 2 + position.x, World.Size / 2 + position.z);
+                var x = Mathf.Floor(r.x / 146.3f) % 26;
+                var z = Mathf.Floor(World.Size / 146.3f) - Mathf.Floor(r.y / 146.3f);
 
-            return $"{(char)('A' + x)}{z - 1}";
+                return $"{(char)('A' + x)}{z - 1}";
+            }
         }
 
-        void FindMonuments()
+        public void FindMonuments()
         {
             Vector3 extents = Vector3.zero;
             float realWidth = 0f;
@@ -1688,9 +1799,6 @@ namespace Oxide.Plugins
             SavedPoints[player.userID] = player.transform.position;
         }
 
-        public void TeleportToPlayer(BasePlayer player, BasePlayer target) => Teleport(player, target.transform.position);
-        public void TeleportToPosition(BasePlayer player, float x, float y, float z) => Teleport(player, new Vector3(x, y, z));
-
         private void NextDay()
         {
             // Has midnight passed since the last plugin load?
@@ -1715,6 +1823,9 @@ namespace Oxide.Plugins
                 { "Outpost", new Dictionary<ulong, float>() }
             };
         }
+
+//        public void TeleportToPlayer(BasePlayer player, BasePlayer target) => Teleport(player, target.transform.position);
+//        public void TeleportToPosition(BasePlayer player, float x, float y, float z) => Teleport(player, new Vector3(x, y, z));
 
         public void Teleport(BasePlayer player, Vector3 position, string type="")
         {
@@ -1798,6 +1909,9 @@ namespace Oxide.Plugins
             config.Types["TPR"].CountDown = 5f;
             config.Types["TPR"].CoolDown = 120f;
             config.Types["TPR"].DailyLimit = 30f;
+            config.Types["TP"].CountDown = 2f;
+            config.Types["TP"].CoolDown = 10f;
+            config.Types["TP"].DailyLimit = 30f;
 
             SaveConfig(config);
         }
@@ -1821,6 +1935,7 @@ namespace Oxide.Plugins
                 Types.Add("TPB", new CmdOptions());
                 Types.Add("TPC", new CmdOptions());
                 Types.Add("TPR", new CmdOptions());
+                Types.Add("TP", new CmdOptions());
             }
         }
 
@@ -1849,6 +1964,7 @@ namespace Oxide.Plugins
             public string SetCommand;
             public string ListCommand;
             public string RemoveCommand;
+            public bool AddTownMapMarker;
         }
         private class CmdOptions : VIPOptions
         {
@@ -1868,20 +1984,15 @@ namespace Oxide.Plugins
             public bool BlockOnSwimming = false;
             public bool BlockOnWater = false;
             public bool AutoAccept = false;
-            public float DailyLimit;
-            public float CountDown;
-            public float CoolDown;
-            public bool AllowBypass;
-            public double BypassAmount;
+            public float DailyLimit = 0;
+            public float CountDown = 5;
+            public float CoolDown = 30;
+            public bool AllowBypass = false;
+            public double BypassAmount = 0;
         }
         private class VIPOptions
         {
             public Dictionary<string, VIPSetting> VIPSettings { get; set; }
-
-//            public VIPOptions(string perm="teleportication.vip")
-//            {
-//                VIPSettings.Add(perm, new VIPSetting());
-//            }
         }
         public class VIPSetting
         {
