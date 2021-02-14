@@ -1462,6 +1462,7 @@ namespace Oxide.Plugins
             Vector3 extents = Vector3.zero;
             float realWidth = 0f;
             string name = null;
+            bool ishapis =  ConVar.Server.level.Contains("Hapis");
             foreach (MonumentInfo monument in UnityEngine.Object.FindObjectsOfType<MonumentInfo>())
             {
                 if (monument.name.Contains("power_sub")) continue;
@@ -1480,7 +1481,21 @@ namespace Oxide.Plugins
                 }
                 else
                 {
-                    name = Regex.Match(monument.name, @"\w{6}\/(.+\/)(.+)\.(.+)").Groups[2].Value.Replace("_", " ").Replace(" 1", "").Titleize();
+                    if (ishapis)
+                    {
+                        var elem = Regex.Matches(monument.name, @"\w{4,}|\d{1,}");
+                        foreach (Match e in elem)
+                        {
+                            if (e.Value.Equals("MONUMENT")) continue;
+                            if (e.Value.Contains("Label")) continue;
+                            name += e.Value + " ";
+                        }
+                        name = name.Trim();
+                    }
+                    else
+                    {
+                        name = Regex.Match(monument.name, @"\w{6}\/(.+\/)(.+)\.(.+)").Groups[2].Value.Replace("_", " ").Replace(" 1", "").Titleize();
+                    }
                 }
                 if(monPos.ContainsKey(name)) continue;
                 if(cavePos.ContainsKey(name)) name = name + RandomString();
