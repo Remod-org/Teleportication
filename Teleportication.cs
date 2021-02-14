@@ -20,7 +20,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.1.4")]
+    [Info("Teleportication", "RFC1920", "1.1.5")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -55,7 +55,7 @@ namespace Oxide.Plugins
         private bool dolog = false;
 
         [PluginReference]
-        private readonly Plugin Friends, Clans, Economics, ServerRewards, GridAPI, NoEscape;
+        private readonly Plugin Friends, Clans, Economics, ServerRewards, GridAPI, NoEscape, Vanish;
         private readonly int blockLayer = LayerMask.GetMask("Construction");
 
         public class TPTimer
@@ -186,6 +186,7 @@ namespace Oxide.Plugins
                 ["homeremoved"] = "Home {0} has been removed.",
                 ["setblocked"] = "Home cannot be set here - {0}",
                 ["blocked"] = "You cannot teleport while blocked!",
+                ["blockedinvis"] = "You cannot teleport while invisible!",
                 ["invalidhome"] = "Home invalid - {0}",
                 ["lastused"] = " Last used: {0} minutes ago",
                 ["lastday"] = " Not used since server restart",
@@ -1095,12 +1096,22 @@ namespace Oxide.Plugins
                 return false;
             }
 
-            if (configData.Options.useNoEscape && NoEscape != null)
+            if (configData.Types[type].BlockForNoEscape && configData.Options.useNoEscape && NoEscape != null)
             {
                 bool isblocked = (bool)NoEscape?.Call("IsBlocked", player);
                 if (isblocked)
                 {
                     Message(player.IPlayer, "blocked");
+                    return false;
+                }
+            }
+
+            if (configData.Types[type].BlockIfInvisible && configData.Options.useVanish && Vanish != null)
+            {
+                bool isblocked = Vanish.Call<bool>("IsInvisible", player);
+                if (isblocked)
+                {
+                    Message(player.IPlayer, "blockedinvis");
                     return false;
                 }
             }
@@ -1972,6 +1983,7 @@ namespace Oxide.Plugins
             public bool useEconomics = false;
             public bool useServerRewards = false;
             public bool useNoEscape = false;
+            public bool useVanish = false;
             public bool HomeRequireFoundation = true;
             public bool StrictFoundationCheck = true;
             public bool HomeRemoveInvalid = true;
@@ -2009,6 +2021,8 @@ namespace Oxide.Plugins
             public bool BlockOnMounted = false;
             public bool BlockOnSwimming = false;
             public bool BlockOnWater = false;
+            public bool BlockForNoEscape = false;
+            public bool BlockIfInvisible = false;
             public bool AutoAccept = false;
             public float DailyLimit = 0;
             public float CountDown = 5;
