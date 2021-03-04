@@ -20,7 +20,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.1.5")]
+    [Info("Teleportication", "RFC1920", "1.1.6")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -218,6 +218,7 @@ namespace Oxide.Plugins
                 ["onmounted"] = "You cannot use /{0} while mounted.",
                 ["onswimming"] = "You cannot use /{0} while swimming.",
                 ["onwater"] = "You cannot use /{0} above water.",
+                ["intunnel"] = "You cannot use /{0} to/from the tunnel system.",
                 ["safezone"] = "You cannot use /{0} from a safe zone.",
                 ["remaining"] = "You have {0} {1} teleports remaining for today.",
                 ["teleporting"] = "Teleporting to {0} in {1} seconds...",
@@ -305,13 +306,13 @@ namespace Oxide.Plugins
                         {
                             TeleportTimers.Add(userid, new TPTimer() { type = "TP", start = Time.realtimeSinceStartup, countdown = configData.Types["TP"].CountDown, source = iplayer.Object as BasePlayer, targetName = "TP", targetLocation = pos });
                             HandleTimer(userid, "TP", true);
-                                if (CooldownTimers["TP"].ContainsKey(userid))
-                                {
-                                    CooldownTimers["TP"][userid].timer.Destroy();
-                                    CooldownTimers["TP"].Remove(userid);
-                                }
-                                CooldownTimers["TP"].Add(userid, new TPTimer() { type = "TP", start = Time.realtimeSinceStartup, countdown = configData.Types["TP"].CoolDown, source = iplayer.Object as BasePlayer, targetName = "TP", targetLocation = pos });
-                                HandleCooldown(userid, "TP", true);
+                            if (CooldownTimers["TP"].ContainsKey(userid))
+                            {
+                                CooldownTimers["TP"][userid].timer.Destroy();
+                                CooldownTimers["TP"].Remove(userid);
+                            }
+                            CooldownTimers["TP"].Add(userid, new TPTimer() { type = "TP", start = Time.realtimeSinceStartup, countdown = configData.Types["TP"].CoolDown, source = iplayer.Object as BasePlayer, targetName = "TP", targetLocation = pos });
+                            HandleCooldown(userid, "TP", true);
                         }
                         else if (TeleportTimers[userid].countdown == 0)
                         {
@@ -1065,6 +1066,11 @@ namespace Oxide.Plugins
                 return false;
             }
 
+            if (InTunnel(player) && configData.Types[type].BlockInTunnel)
+            {
+                Message(player.IPlayer, "intunnel", type.ToLower());
+                return false;
+            }
             if (AboveWater(player) && configData.Types[type].BlockOnWater)
             {
                 Message(player.IPlayer, "onwater", type.ToLower());
@@ -1304,6 +1310,22 @@ namespace Oxide.Plugins
             {
                 return true;
             }
+            return false;
+        }
+
+        public bool InTunnel(BasePlayer player)
+        {
+            if(player.transform.position.y < -60f)
+            {
+                return true;
+            }
+            List<BaseEntity> ents = new List<BaseEntity>();
+            Vis.Entities(player.transform.position, 50, ents);
+            foreach (BaseEntity entity in ents)
+            {
+                if (entity.name.Contains("tunnel")) return true;
+            }
+
             return false;
         }
 
@@ -2023,6 +2045,7 @@ namespace Oxide.Plugins
             public bool BlockOnWater = false;
             public bool BlockForNoEscape = false;
             public bool BlockIfInvisible = false;
+            public bool BlockInTunnel = false;
             public bool AutoAccept = false;
             public float DailyLimit = 0;
             public float CountDown = 5;
