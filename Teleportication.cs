@@ -1,4 +1,26 @@
 //#define DEBUG
+#region License (GPL v3)
+/*
+    Teleportication - NextGen Teleportation Plugin
+    Copyright (c) 2020 RFC1920 <desolationoutpostpve@gmail.com>
+
+    This program is free software; you can redistribute it and/or
+    modify it under the terms of the GNU General Public License
+    as published by the Free Software Foundation; either version 2
+    of the License, or (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+    Optionally you can also view the license at <http://www.gnu.org/licenses/>.
+*/
+#endregion License (GPL v3)
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
@@ -20,7 +42,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.1.6")]
+    [Info("Teleportication", "RFC1920", "1.1.7")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -28,6 +50,8 @@ namespace Oxide.Plugins
         private SortedDictionary<ulong, Vector3> SavedPoints = new SortedDictionary<ulong, Vector3>();
         private SortedDictionary<ulong, ulong> TPRRequests = new SortedDictionary<ulong, ulong>();
         private SortedDictionary<string, Vector3> monPos  = new SortedDictionary<string, Vector3>();
+        private SortedDictionary<string, Vector3> tunnelPos  = new SortedDictionary<string, Vector3>();
+        private SortedDictionary<string, Vector3> stationPos  = new SortedDictionary<string, Vector3>();
         private SortedDictionary<string, Vector3> monSize = new SortedDictionary<string, Vector3>();
         private SortedDictionary<string, Vector3> cavePos  = new SortedDictionary<string, Vector3>();
 
@@ -44,6 +68,8 @@ namespace Oxide.Plugins
         private const string permTP_Town = "teleportication.town";
         private const string permTP_Bandit = "teleportication.bandit";
         private const string permTP_Outpost = "teleportication.outpost";
+        private const string permTP_Tunnel  = "teleportication.tunnel";
+        private const string permTP_Station = "teleportication.station";
         private const string permTP_Admin = "teleportication.admin";
 
         private ConfigData configData;
@@ -112,6 +138,8 @@ namespace Oxide.Plugins
             CooldownTimers.Add("TP", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("Bandit", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("Outpost", new Dictionary<ulong, TPTimer>());
+            CooldownTimers.Add("Tunnel", new Dictionary<ulong, TPTimer>());
+            CooldownTimers.Add("Station", new Dictionary<ulong, TPTimer>());
 #if DEBUG
             Puts("Setting up daily limits dictionary");
 #endif
@@ -123,6 +151,8 @@ namespace Oxide.Plugins
             DailyLimits.Add("TP", new Dictionary<ulong, float>());
             DailyLimits.Add("Bandit", new Dictionary<ulong, float>());
             DailyLimits.Add("Outpost", new Dictionary<ulong, float>());
+            DailyLimits.Add("Tunnel", new Dictionary<ulong, float>());
+            DailyLimits.Add("Station", new Dictionary<ulong, float>());
 
             LoadData();
 
@@ -131,6 +161,8 @@ namespace Oxide.Plugins
             AddCovalenceCommand("town", "CmdTownTeleport");
             AddCovalenceCommand("bandit", "CmdTownTeleport");
             AddCovalenceCommand("outpost", "CmdTownTeleport");
+            AddCovalenceCommand("tunnel", "CmdTownTeleport");
+            AddCovalenceCommand("station", "CmdTownTeleport");
             AddCovalenceCommand("tpa", "CmdTpa");
             AddCovalenceCommand("tpb", "CmdTpb");
             AddCovalenceCommand("tpc", "CmdTpc");
@@ -145,6 +177,8 @@ namespace Oxide.Plugins
             permission.RegisterPermission(permTP_Town, this);
             permission.RegisterPermission(permTP_Bandit, this);
             permission.RegisterPermission(permTP_Outpost, this);
+            permission.RegisterPermission(permTP_Tunnel, this);
+            permission.RegisterPermission(permTP_Station, this);
             permission.RegisterPermission(permTP_Admin, this);
 #if DEBUG
             Puts("Setting up vip permissions");
@@ -196,6 +230,8 @@ namespace Oxide.Plugins
                 ["tpr"] = "another player",
                 ["town"] = "Town",
                 ["outpost"] = "Outpost",
+                ["tunnels"] = "Available Tunnel Entrances:\n{0}",
+                ["stations"] = "Available Tunnel Stations (DANGEROUS):\n{0}",
                 ["bandit"] = "Bandit",
                 ["cooldown"] = "Currently in cooldown for {0} for another {1} seconds.",
                 ["limit"] = "You have hit the daily limit for {0}: ({1} of {2})",
@@ -761,6 +797,133 @@ namespace Oxide.Plugins
 
             switch (command)
             {
+                case "station":
+                    if (!iplayer.HasPermission(permTP_Station)) { Message(iplayer, "notauthorized"); return; }
+                    string starget = null;
+                    if (args.Length > 0)
+                    {
+                        starget = string.Join(" ", args);
+                    }
+                    if (starget == null)
+                    {
+                        string res = "";
+                        using (SQLiteConnection c = new SQLiteConnection(connStr))
+                        {
+                            c.Open();
+                            using (SQLiteCommand q = new SQLiteCommand($"SELECT name FROM rtp_server WHERE name LIKE '%Station%' ORDER BY name", c))
+                            {
+                                using (SQLiteDataReader svr = q.ExecuteReader())
+                                {
+                                    while (svr.Read())
+                                    {
+                                        string nm = svr.GetValue(0).ToString().Replace("Station", "");
+                                        res += $" {nm}\n";
+                                    }
+                                }
+                            }
+                        }
+                        Message(iplayer, "stations", res);
+                        return;
+                    }
+                    string stype = "Station";
+                    var query =  $"SELECT location FROM rtp_server WHERE name='{starget} Station'";
+                    List<string> station = (List<string>)RunSingleSelectQuery(query);
+
+                    if (station != null)
+                    {
+                        if (CanTeleport(player, station[0], stype))
+                        {
+                            if (!TeleportTimers.ContainsKey(player.userID))
+                            {
+                                TeleportTimers.Add(player.userID, new TPTimer() { type = stype, start = Time.realtimeSinceStartup, countdown = configData.Types[stype].CountDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(station[0]) });
+                                HandleTimer(player.userID, stype, true);
+                                if (CooldownTimers[stype].ContainsKey(player.userID))
+                                {
+                                    CooldownTimers[stype][player.userID].timer.Destroy();
+                                    CooldownTimers[stype].Remove(player.userID);
+                                }
+                                CooldownTimers[stype].Add(player.userID, new TPTimer() { type = stype, start = Time.realtimeSinceStartup, countdown = configData.Types[stype].CoolDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(station[0]) });
+                                HandleCooldown(player.userID, stype, true);
+                                float limit = GetDailyLimit(player.userID, stype);
+                                if (limit > 0)
+                                {
+                                    Message(iplayer, "remaining", limit.ToString(), stype);
+                                }
+
+                                Message(iplayer, "teleporting", command, configData.Types[stype].CountDown.ToString());
+                            }
+                            else if (TeleportTimers[player.userID].countdown == 0)
+                            {
+                                Teleport(player, StringToVector3(station[0]), command);
+                            }
+                        }
+                        break;
+                    }
+                    Message(iplayer, "locationnotset", Lang(command));
+                    break;
+                case "tunnel":
+                    if (!iplayer.HasPermission(permTP_Tunnel)) { Message(iplayer, "notauthorized"); return; }
+                    string dtarget = null;
+                    if (args.Length > 0)
+                    {
+                        dtarget = string.Join(" ", args);
+                    }
+                    if (dtarget == null)
+                    {
+                        string res = "";
+                        using (SQLiteConnection c = new SQLiteConnection(connStr))
+                        {
+                            c.Open();
+                            using (SQLiteCommand q = new SQLiteCommand($"SELECT name FROM rtp_server WHERE name LIKE '%Tunnel%' ORDER BY name", c))
+                            {
+                                using (SQLiteDataReader svr = q.ExecuteReader())
+                                {
+                                    while (svr.Read())
+                                    {
+                                        string nm = svr.GetValue(0).ToString().Replace("Tunnel", "");
+                                        res += $" {nm}\n";
+                                    }
+                                }
+                            }
+                        }
+                        Message(iplayer, "tunnels", res);
+                        return;
+                    }
+                    string dtype = "Tunnel";
+                    List<string> tunnel = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='{dtarget} Tunnel'");
+
+                    if (tunnel != null)
+                    {
+                        if (CanTeleport(player, tunnel[0], dtype))
+                        {
+                            if (!TeleportTimers.ContainsKey(player.userID))
+                            {
+                                TeleportTimers.Add(player.userID, new TPTimer() { type = dtype, start = Time.realtimeSinceStartup, countdown = configData.Types[dtype].CountDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(tunnel[0]) });
+                                HandleTimer(player.userID, dtype, true);
+                                if (CooldownTimers[dtype].ContainsKey(player.userID))
+                                {
+                                    CooldownTimers[dtype][player.userID].timer.Destroy();
+                                    CooldownTimers[dtype].Remove(player.userID);
+                                }
+                                CooldownTimers[dtype].Add(player.userID, new TPTimer() { type = dtype, start = Time.realtimeSinceStartup, countdown = configData.Types[dtype].CoolDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(tunnel[0]) });
+                                HandleCooldown(player.userID, dtype, true);
+                                float limit = GetDailyLimit(player.userID, dtype);
+                                if (limit > 0)
+                                {
+                                    Message(iplayer, "remaining", limit.ToString(), dtype);
+                                }
+
+                                Message(iplayer, "teleporting", command, configData.Types[dtype].CountDown.ToString());
+                            }
+                            else if (TeleportTimers[player.userID].countdown == 0)
+                            {
+                                Teleport(player, StringToVector3(tunnel[0]), command);
+                            }
+                        }
+                        break;
+                    }
+                    Message(iplayer, "locationnotset", Lang(command));
+                    break;
                 case "town":
                     if (!iplayer.HasPermission(permTP_Town)) { Message(iplayer, "notauthorized"); return; }
                     goto case "all";
@@ -1506,6 +1669,7 @@ namespace Oxide.Plugins
             float realWidth = 0f;
             string name = null;
             bool ishapis =  ConVar.Server.level.Contains("Hapis");
+
             foreach (MonumentInfo monument in UnityEngine.Object.FindObjectsOfType<MonumentInfo>())
             {
                 if (monument.name.Contains("power_sub")) continue;
@@ -1601,9 +1765,78 @@ namespace Oxide.Plugins
 #endif
                 }
             }
+
+            if (configData.Options.AutoGenTunnels)
+            {
+                foreach (DungeonLink dungeon in UnityEngine.Object.FindObjectsOfType<DungeonLink>())
+                {
+                    if (dungeon.name.Contains("entrance"))
+                    {
+                        var test = GetClosest(dungeon.transform.position);
+                        if (!test.Contains("ntrance"))
+                        {
+                            name = test + " Tunnel";
+
+                            if (tunnelPos.ContainsKey(name)) continue;
+                            tunnelPos.Add(name, dungeon.transform.position);
+                            RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('{name}', '{dungeon.transform.position.ToString()}')");
+#if DEBUG
+                            Puts($"Adding Tunnel Entrance: {name}, pos: {dungeon.transform.position.ToString()}");
+#endif
+                        }
+                    }
+                    if (dungeon.name.Contains("station"))
+                    {
+                        var test = GetClosest(dungeon.transform.position);
+                        if (!test.Contains("ntrance"))
+                        {
+                            name = test + " Station";
+
+                            if (tunnelPos.ContainsKey(name)) continue;
+
+                            List<TunnelDweller> td = new List<TunnelDweller>();
+                            Vis.Entities(dungeon.transform.position, 25f, td);
+                            foreach (var t in td)
+                            {
+                                Vector3 newpos = new Vector3(dungeon.transform.position.x, t.transform.position.y, dungeon.transform.position.z);
+                                tunnelPos.Add(name, newpos);
+                                RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('{name}', '{newpos.ToString()}')");
+#if DEBUG
+                                Puts($"Adding Tunnel Station: {name}, pos: {newpos.ToString()}");
+#endif
+                                break;
+                            }
+                        }
+                    }
+                }
+                tunnelPos.OrderBy(x => x.Key);
+            }
+
             monPos.OrderBy(x => x.Key);
             monSize.OrderBy(x => x.Key);
             cavePos.OrderBy(x => x.Key);
+        }
+
+        public string GetClosest(Vector3 startPosition)
+        {
+            Vector3 bestTarget = new Vector3();
+            float closestDistanceSqr = Mathf.Infinity;
+
+            foreach (Vector3 potentialTarget in monPos.Values)
+            {
+                Vector3 direction = potentialTarget - startPosition;
+
+                float dSqrToTarget = direction.sqrMagnitude;
+
+                if (dSqrToTarget < closestDistanceSqr)
+                {
+                    closestDistanceSqr = dSqrToTarget;
+                    bestTarget = potentialTarget;
+                }
+            }
+
+            var mon = (from rv in monPos where rv.Value.Equals(bestTarget) select rv.Key).FirstOrDefault();
+            return mon;
         }
 
         private bool RunUpdateQuery(string query)
@@ -1942,6 +2175,7 @@ namespace Oxide.Plugins
             config.Options.CaveDistanceLarge = 100f;
             config.Options.AutoGenBandit = true;
             config.Options.AutoGenOutpost = true;
+            config.Options.AutoGenTunnels = false;
             config.Options.MinimumTemp = 0f;
             config.Options.MaximumTemp = 40f;
             config.Types["Home"].CountDown = 5f;
@@ -1990,6 +2224,8 @@ namespace Oxide.Plugins
                 Types.Add("Town", new CmdOptions());
                 Types.Add("Bandit", new CmdOptions());
                 Types.Add("Outpost", new CmdOptions());
+                Types.Add("Tunnel", new CmdOptions());
+                Types.Add("Station", new CmdOptions());
                 Types.Add("TPB", new CmdOptions());
                 Types.Add("TPC", new CmdOptions());
                 Types.Add("TPR", new CmdOptions());
@@ -2014,6 +2250,7 @@ namespace Oxide.Plugins
             public bool WipeOnNewSave = true;
             public bool AutoGenBandit;
             public bool AutoGenOutpost;
+            public bool AutoGenTunnels;
             public float HomeMinimumDistance;
             public float DefaultMonumentSize;
             public float CaveDistanceSmall;
@@ -2045,7 +2282,7 @@ namespace Oxide.Plugins
             public bool BlockOnWater = false;
             public bool BlockForNoEscape = false;
             public bool BlockIfInvisible = false;
-            public bool BlockInTunnel = false;
+            public bool BlockInTunnel = true;
             public bool AutoAccept = false;
             public float DailyLimit = 0;
             public float CountDown = 5;

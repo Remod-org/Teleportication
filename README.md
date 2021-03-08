@@ -27,6 +27,10 @@ A lot of the familiar commands from older teleport plugins are still there, with
       - /tpadmin backup - Backup database
       - /tpadmin import {r/n} {1/y/yes/true} - Import data from R/NTeleportation (homes only)
         If you specify 1 or y, etc. at the end it will actually do the import.  Otherwise, it will show what will be imported.
+    - /tunnel -- List available tunnel entrances
+      - /tunnel NAME OF TUNNEL -- Teleport to a tunnel entrance
+    - /station -- List available tunnel stations
+      - /tunnel NAME OF TUNNEL -- Teleport to a tunnel station (DANGEROUS: Procted by tunnel dwellers)
 
 ### Permissions
     - teleportication.use     - /home
@@ -35,6 +39,8 @@ A lot of the familiar commands from older teleport plugins are still there, with
     - teleportication.town    - /town
     - teleportication.bandit  - /bandit
     - teleportication.outpost - /outpost
+    - teleportication.station - /station
+    - teleportication.tunnel  - /tunnel
 
 ### Configuration
 ```json
@@ -52,6 +58,7 @@ A lot of the familiar commands from older teleport plugins are still there, with
     "WipeOnNewSave": true,
     "AutoGenBandit": true,
     "AutoGenOutpost": true,
+    "AutoGenTunnels": false,
     "DefaultMonumentSize": 120.0,
     "CaveDistanceSmall": 40.0,
     "CaveDistanceMedium": 60.0,
@@ -77,6 +84,7 @@ A lot of the familiar commands from older teleport plugins are still there, with
       "BlockOnMounted": true,
       "BlockOnSwimming": false,
       "BlockOnWater": false,
+      "BlockInTunnel": true,
       "AutoAccept": false,
       "DailyLimit": 10.0,
       "CountDown": 5.0,
@@ -100,6 +108,7 @@ A lot of the familiar commands from older teleport plugins are still there, with
     - `WipeOnNewSave` -- If set, wipe home, town, bandit, outpost on a new map save.
     - `AutoGenBandit` -- Generate bandit location once per wipe.
     - `AutoGenOutpost` -- Generate outpost location once per wipe.
+    - `AutoGenTunnels` -- Generate locations for tunnel stations and entrances once per wipe.
     - `DefaultMonumentSize` -- Most monuments do not contain a size parameter, so this would be the default in that case.
     - `CaveDistanceSmall` -- Small cave distance/size (no stored parameter)
     - `CaveDistanceMedium` -- Medium cave distance/size (no stored parameter)
@@ -124,6 +133,7 @@ A lot of the familiar commands from older teleport plugins are still there, with
     - `BlockOnMounted`: false -- Block if player is mounted to a chair, etc.
     - `BlockOnSwimming`: false -- Block if player is swimming.
     - `BlockOnWater`: false -- Block if player is above water. 
+    - `BlockInTunnel`: true -- Block if player is in a tunnel (height check). 
     - `AutoAccept`: false -- Only valid for TPR to automatically TPA.
     - `DailyLimit`: 0.0 -- (NOT YET WORKING) If set to other than 0, the limit for this action per day.
     - `CountDown`: 5.0 -- Waiting period for action on home, tpr, etc.
