@@ -42,7 +42,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.1.7")]
+    [Info("Teleportication", "RFC1920", "1.1.8")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -299,6 +299,7 @@ namespace Oxide.Plugins
                         while (rtbl.Read()) { found = true; }
                     }
                 }
+                c.Close();
             }
             if (!found) CreateOrClearTables(true);
         }
@@ -481,6 +482,7 @@ namespace Oxide.Plugins
                                     }
                                 }
                             }
+                            c.Close();
                         }
                         Message(iplayer, loc);
 
@@ -520,6 +522,7 @@ namespace Oxide.Plugins
                                 d.Open();
                                 c.BackupDatabase(d, "main", "main", -1, null, -1);
                             }
+                            c.Close();
                             Message(iplayer, "BackupDone", backupfile);
                         }
                         break;
@@ -551,8 +554,9 @@ namespace Oxide.Plugins
                 using (SQLiteConnection c = new SQLiteConnection(connStr))
                 {
                     c.Open();
-
-                    using (SQLiteCommand q = new SQLiteCommand($"SELECT name, location, lastused FROM rtp_player WHERE userid='{player.userID}'", c))
+                    string qh = $"SELECT name, location, lastused FROM rtp_player WHERE userid='{player.userID}'";
+                    Puts(qh);
+                    using (SQLiteCommand q = new SQLiteCommand(qh, c))
                     {
                         using (SQLiteDataReader home = q.ExecuteReader())
                         {
@@ -578,6 +582,7 @@ namespace Oxide.Plugins
                             }
                         }
                     }
+                    c.Close();
                 }
                 if (hashomes)
                 {
@@ -616,6 +621,7 @@ namespace Oxide.Plugins
                                 }
                             }
                         }
+                        c.Close();
                     }
                     if (hashomes)
                     {
@@ -638,7 +644,33 @@ namespace Oxide.Plugins
                 if (CanSetHome(player, player.transform.position, out reason))
                 {
                     string home = args[1];
-                    RunUpdateQuery($"INSERT OR REPLACE INTO rtp_player VALUES('{player.userID}', '{home}', '{player.transform.position.ToString()}', '{Time.realtimeSinceStartup}', 0)");
+                    //cd = new SQLiteCommand("CREATE TABLE rtp_player (userid VARCHAR(255), name VARCHAR(255) NOT NULL UNIQUE, location VARCHAR(255), lastused VARCHAR(255), total INTEGER(32))", sqlConnection);
+                    bool found = false;
+                    using (SQLiteConnection c = new SQLiteConnection(connStr))
+                    {
+                        c.Open();
+                        string q = $"SELECT name FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'";
+                        Puts(q);
+                        using (SQLiteCommand ct = new SQLiteCommand(q, c))
+                        {
+                            using (SQLiteDataReader pl = ct.ExecuteReader())
+                            {
+                                while (pl.Read())
+                                {
+                                    if(pl.GetString(0) == home) found = true;
+                                }
+                            }
+                        }
+                        c.Close();
+                    }
+                    if (found)
+                    {
+                        RunUpdateQuery($"UPDATE rtp_player SET location='{player.transform.position.ToString()}' WHERE userid='{player.userID}' AND name='{home}'");
+                    }
+                    else
+                    {
+                        RunUpdateQuery($"INSERT INTO rtp_player VALUES('{player.userID}', '{home}', '{player.transform.position.ToString()}', '{Time.realtimeSinceStartup}', 0)");
+                    }
                     Message(iplayer, "homeset", home);
                 }
                 else
@@ -821,6 +853,7 @@ namespace Oxide.Plugins
                                     }
                                 }
                             }
+                            c.Close();
                         }
                         Message(iplayer, "stations", res);
                         return;
@@ -885,6 +918,7 @@ namespace Oxide.Plugins
                                     }
                                 }
                             }
+                            c.Close();
                         }
                         Message(iplayer, "tunnels", res);
                         return;
@@ -1841,6 +1875,7 @@ namespace Oxide.Plugins
 
         private bool RunUpdateQuery(string query)
         {
+            Puts(query);
             using (SQLiteConnection c = new SQLiteConnection(connStr))
             {
                 c.Open();
@@ -1848,6 +1883,7 @@ namespace Oxide.Plugins
                 {
                     cmd.ExecuteNonQuery();
                 }
+                c.Close();
             }
             return true;
         }
@@ -1872,6 +1908,7 @@ namespace Oxide.Plugins
                         }
                     }
                 }
+                c.Close();
             }
             if (output.Count > 0) return output;
             return null;
@@ -2154,7 +2191,33 @@ namespace Oxide.Plugins
 #if DEBUG
             Puts("Loading configuration...");
 #endif
+            //UPDATE sqlite_schema SET sql=... WHERE type='table' AND name='X';
             configData = Config.ReadObject<ConfigData>();
+
+            if (configData.Version < new VersionNumber(1, 1, 18))
+            {
+                using (SQLiteConnection c = new SQLiteConnection(connStr))
+                {
+                    c.Open();
+                    using (SQLiteCommand ct = new SQLiteCommand("CREATE TABLE new_player (userid VARCHAR(255), name VARCHAR(255) NOT NULL, location VARCHAR(255), lastused VARCHAR(255), total INTEGER(32))", c))
+                    {
+                        ct.ExecuteNonQuery();
+                    }
+                    using (SQLiteCommand ct = new SQLiteCommand("INSERT INTO new_player SELECT * FROM rtp_player", c))
+                    {
+                        ct.ExecuteNonQuery();
+                    }
+                    using (SQLiteCommand ct = new SQLiteCommand("DROP TABLE IF EXISTS rtp_player", c))
+                    {
+                        ct.ExecuteNonQuery();
+                    }
+                    using (SQLiteCommand ct = new SQLiteCommand("ALTER TABLE new_player RENAME TO rtp_player", c))
+                    {
+                        ct.ExecuteNonQuery();
+                    }
+                }
+            }
+
             configData.Version = Version;
             SaveConfig(configData);
         }
@@ -2536,7 +2599,7 @@ namespace Oxide.Plugins
 
                 cd = new SQLiteCommand("DROP TABLE IF EXISTS rtp_player", sqlConnection);
                 cd.ExecuteNonQuery();
-                cd = new SQLiteCommand("CREATE TABLE rtp_player (userid VARCHAR(255), name VARCHAR(255) NOT NULL UNIQUE, location VARCHAR(255), lastused VARCHAR(255), total INTEGER(32))", sqlConnection);
+                cd = new SQLiteCommand("CREATE TABLE rtp_player (userid VARCHAR(255), name VARCHAR(255) NOT NULL, location VARCHAR(255), lastused VARCHAR(255), total INTEGER(32))", sqlConnection);
                 cd.ExecuteNonQuery();
             }
             else
