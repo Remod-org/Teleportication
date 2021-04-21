@@ -12,6 +12,7 @@ A lot of the familiar commands from older teleport plugins are still there, with
     - /home set NAME - Sets a home at player's current location
     - /home remove NAME - Removes the home named NAME
     - /home NAME - Teleports you to your home with that NAME.
+    - /homeg - Show a GUI listing user homes (currently only the current user).
     - /town set - Sets town at the current location
     - /bandit set - Sets bandit at the current location
     - /outpost set - Sets outpost at the current location
@@ -46,6 +47,8 @@ A lot of the familiar commands from older teleport plugins are still there, with
 ```json
 {
   "Options": {
+    "debug": false,
+    "logtofile": false,
     "useClans": false,
     "useFriends": false,
     "useTeams": false,
