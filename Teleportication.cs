@@ -42,7 +42,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.1.9")]
+    [Info("Teleportication", "RFC1920", "1.2.0")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -1927,7 +1927,7 @@ namespace Oxide.Plugins
                 BasePlayer player = BasePlayer.FindByID(playerid);
                 if(player.currentTeam != 0)
                 {
-                    RelationshipManager.PlayerTeam playerTeam = RelationshipManager.Instance.FindTeam(player.currentTeam);
+                    RelationshipManager.PlayerTeam playerTeam = RelationshipManager.ServerInstance.FindTeam(player.currentTeam);
                     if(playerTeam == null) return false;
                     if(playerTeam.members.Contains(ownerid))
                     {
