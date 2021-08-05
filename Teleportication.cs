@@ -42,7 +42,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.2.0")]
+    [Info("Teleportication", "RFC1920", "1.2.1")]
     [Description("NextGen Teleportation plugin")]
     class Teleportication : RustPlugin
     {
@@ -336,7 +336,8 @@ namespace Oxide.Plugins
                     {
                         if (!TeleportTimers.ContainsKey(userid))
                         {
-                            TeleportTimers.Add(userid, new TPTimer() { type = "TP", start = Time.realtimeSinceStartup, countdown = configData.Types["TP"].CountDown, source = iplayer.Object as BasePlayer, targetName = "TP", targetLocation = pos });
+                            AddTimer(iplayer.Object as BasePlayer, pos, "TP", "TP");
+                            //TeleportTimers.Add(userid, new TPTimer() { type = "TP", start = Time.realtimeSinceStartup, countdown = configData.Types["TP"].CountDown, source = iplayer.Object as BasePlayer, targetName = "TP", targetLocation = pos });
                             HandleTimer(userid, "TP", true);
                             if (CooldownTimers["TP"].ContainsKey(userid))
                             {
@@ -698,7 +699,8 @@ namespace Oxide.Plugins
                     {
                         if (!TeleportTimers.ContainsKey(player.userID))
                         {
-                            TeleportTimers.Add(player.userID, new TPTimer() { type = "Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CountDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
+                            AddTimer(player, StringToVector3(homes[0]), "Home", "Home");
+                            //TeleportTimers.Add(player.userID, new TPTimer() { type = "Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CountDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
                             HandleTimer(player.userID, "Home", true);
                             if (CooldownTimers["Home"].ContainsKey(player.userID))
                             {
@@ -749,7 +751,8 @@ namespace Oxide.Plugins
                 {
                     if (!TeleportTimers.ContainsKey(player.userID))
                     {
-                        TeleportTimers.Add(player.userID, new TPTimer() { type = "Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CountDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
+                        AddTimer(player, StringToVector3(homes[0]), "Home", "Home");
+                        //TeleportTimers.Add(player.userID, new TPTimer() { type = "Home", start = Time.realtimeSinceStartup, countdown = configData.Types["Home"].CountDown, source = player, targetName = home, targetLocation = StringToVector3(homes[0]) });
                         HandleTimer(player.userID, "Home", true);
                         if (CooldownTimers["Home"].ContainsKey(player.userID))
                         {
@@ -885,7 +888,8 @@ namespace Oxide.Plugins
                         {
                             if (!TeleportTimers.ContainsKey(player.userID))
                             {
-                                TeleportTimers.Add(player.userID, new TPTimer() { type = stype, start = Time.realtimeSinceStartup, countdown = configData.Types[stype].CountDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(station[0]) });
+                                AddTimer(player, StringToVector3(station[0]), stype, Lang("town"));
+                                //TeleportTimers.Add(player.userID, new TPTimer() { type = stype, start = Time.realtimeSinceStartup, countdown = configData.Types[stype].CountDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(station[0]) });
                                 HandleTimer(player.userID, stype, true);
                                 if (CooldownTimers[stype].ContainsKey(player.userID))
                                 {
@@ -949,7 +953,8 @@ namespace Oxide.Plugins
                         {
                             if (!TeleportTimers.ContainsKey(player.userID))
                             {
-                                TeleportTimers.Add(player.userID, new TPTimer() { type = dtype, start = Time.realtimeSinceStartup, countdown = configData.Types[dtype].CountDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(tunnel[0]) });
+                                AddTimer(player, StringToVector3(tunnel[0]), dtype, Lang("town"));
+                                //TeleportTimers.Add(player.userID, new TPTimer() { type = dtype, start = Time.realtimeSinceStartup, countdown = configData.Types[dtype].CountDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(tunnel[0]) });
                                 HandleTimer(player.userID, dtype, true);
                                 if (CooldownTimers[dtype].ContainsKey(player.userID))
                                 {
@@ -993,7 +998,8 @@ namespace Oxide.Plugins
                         {
                             if (!TeleportTimers.ContainsKey(player.userID))
                             {
-                                TeleportTimers.Add(player.userID, new TPTimer() { type = type, start = Time.realtimeSinceStartup, countdown = configData.Types[type].CountDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(target[0]) });
+                                AddTimer(player, StringToVector3(target[0]), type, Lang("town"));
+                                //TeleportTimers.Add(player.userID, new TPTimer() { type = type, start = Time.realtimeSinceStartup, countdown = configData.Types[type].CountDown, source = player, targetName = Lang("town"), targetLocation = StringToVector3(target[0]) });
                                 HandleTimer(player.userID, type, true);
                                 if (CooldownTimers[type].ContainsKey(player.userID))
                                 {
@@ -1038,7 +1044,8 @@ namespace Oxide.Plugins
                 if (CanTeleport(player, oldloc.ToString(), "TPB"))
                 {
                     if (TeleportTimers.ContainsKey(player.userID)) TeleportTimers.Remove(player.userID);
-                    TeleportTimers.Add(player.userID, new TPTimer() { type="TPB", start = Time.realtimeSinceStartup, countdown = configData.Types["TPB"].CountDown, source = player, targetName = Lang("tpb"), targetLocation = oldloc });
+                    AddTimer(player, oldloc, "TPB", Lang("tpb"));
+                    //TeleportTimers.Add(player.userID, new TPTimer() { type="TPB", start = Time.realtimeSinceStartup, countdown = configData.Types["TPB"].CountDown, source = player, targetName = Lang("tpb"), targetLocation = oldloc });
                     HandleTimer(player.userID, "TPB", true);
                     if (CooldownTimers["TPB"].ContainsKey(player.userID))
                     {
@@ -1105,7 +1112,8 @@ namespace Oxide.Plugins
                         {
                             DoLog("AutoTPA!");
                             if (TeleportTimers.ContainsKey(sourceId)) TeleportTimers.Remove(sourceId);
-                            TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown, source = (iplayer.Object as BasePlayer), targetName = iplayer.Name, targetLocation = target.transform.position });
+                            AddTimer(iplayer.Object as BasePlayer, target.transform.position, "TPR", iplayer.Name);
+                            //TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown, source = (iplayer.Object as BasePlayer), targetName = iplayer.Name, targetLocation = target.transform.position });
                             HandleTimer(sourceId, "TPR", true);
                         }
                     }
@@ -1781,7 +1789,7 @@ namespace Oxide.Plugins
 
             if (configData.Options.AutoGenTunnels)
             {
-                foreach (DungeonLink dungeon in UnityEngine.Object.FindObjectsOfType<DungeonLink>())
+                foreach (DungeonBaseLink dungeon in UnityEngine.Object.FindObjectsOfType<DungeonBaseLink>())
                 {
                     if (dungeon.name.Contains("entrance"))
                     {
@@ -1936,6 +1944,21 @@ namespace Oxide.Plugins
                 }
             }
             return false;
+        }
+
+        public void AddTimer(BasePlayer player, Vector3 targetLoc, string type, string typeName)
+        {
+            TeleportTimers.Add(
+                player.userID,
+                new TPTimer()
+                {
+                    type = type,
+                    start = Time.realtimeSinceStartup,
+                    countdown = configData.Types[type].CountDown,
+                    source = player, targetName = Lang(typeName),
+                    targetLocation = targetLoc
+                }
+            );
         }
 
         public void HandleTimer(ulong userid, string type, bool start = false)
