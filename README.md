@@ -69,6 +69,16 @@ A lot of the familiar commands from older teleport plugins are still there, with
     "MinimumTemp": 0.0,
     "MaximumTemp": 40.0,
     "SetCommand": "set"
+    "ListCommand": "list",
+    "RemoveCommand": "remove",
+    "AddTownMapMarker": false,
+    "TownZoneId": null,
+    "TownZoneEnterMessage": "Welcome to Town",
+    "TownZoneLeaveMessage": "Thanks for stopping by!",
+    "TownZoneFlags": [
+      "nodecay",
+      "nohelitargeting"
+    ]
   },
   "Types": {
     "Home": {
@@ -99,6 +109,7 @@ A lot of the familiar commands from older teleport plugins are still there, with
   ...
 }
 ```
+
 #### Global Options
     - `useClans` -- Use various Clans plugins for determining relationships
     - `useFriends` -- Use various Friends plugins for determining relationships
@@ -119,6 +130,13 @@ A lot of the familiar commands from older teleport plugins are still there, with
     - `MinimumTemp` -- Minimum player temperature to allow teleport, if BlockOnCold is set.
     - `MaximumTemp` -- Maximum player temperature to allow teleport, if BlockOnHot is set.
     - `SetCommand` -- For different languages to select something other than 'set' to set home, town, etc.
+    - `ListCommand` -- For different languages to select something other than 'list' to list homes
+    - `RemoveCommand` -- For different languages to select something other than 'set' to remove homes
+    - `AddTownMapMarker` -- If true, adds a green dot at the location of town on player maps
+    - `TownZoneId` -- If set to anything other than null, an attempt will be made to assign a zone to town using ZoneManager.  This can be a zone you have already set to your liking.  This is to avoid having to reset the zone location every time you move or set town.
+    - `TownZoneEnterMessage` -- When entering the town zone, players will see this message.  Default is "Welcome to Town".  Leave empty if you already have a zone setup the way you like it.
+    - `TownZoneLeaveMessage"` -- When leaving the town zone, players will see this message.  Default is  "Thanks for stopping by!".
+    - `TownZoneFlags` -- The default values here prevent town decay and targeting by the heli within the town zone.  You can remove this if desired by setting this variable to [].  Or, edit the zone flags as you like.  See the documentation for ZoneManager.
 
 #### For each of home, town, bandit, outpost, tpr, flags may be set as follows:
     - `BlockOnHurt`: false -- Block if player is injured (bleeding, etc.).
@@ -169,7 +187,7 @@ The default is "VIPSettings": null, ...  Change them as needed, creating your ow
 
 Despite some similarites, the configuration and data files from other teleport plugins are NOT compatible.
 
-teleportication uses SQLite for home, town, bandit, and outpost storage.  The file is saved in {oxidedata}/Teleportication/teleportication.db.
+Teleportication uses SQLite for home, town, bandit, and outpost storage.  The file is saved in {oxidedata}/Teleportication/teleportication.db.
 
 In-memory objects keep track of previous location for tpb, pending tpr/tpa, etc.  This could change as development progresses.
 
