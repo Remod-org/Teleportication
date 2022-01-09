@@ -43,7 +43,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.2.3")]
+    [Info("Teleportication", "RFC1920", "1.2.4")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -607,7 +607,7 @@ namespace Oxide.Plugins
             {
                 // List a friend's homes
                 BasePlayer target = BasePlayer.Find(args[1]);
-                if (IsFriend(player.userID, target.userID) && target != null)
+                if (target != null && IsFriend(player.userID, target.userID))
                 {
                     string available = Lang("homesavailfor", null, RemoveSpecialCharacters(target.displayName)) + "\n";
                     bool hashomes = false;
@@ -700,7 +700,7 @@ namespace Oxide.Plugins
             {
                 // Use a friend's home: /home Playername home1
                 BasePlayer target = BasePlayer.Find(args[0]);
-                if (IsFriend(player.userID, target.userID) && target != null)
+                if (target != null && IsFriend(player.userID, target.userID))
                 {
                     string home = args[1];
                     List<string> homes = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{target.userID}' AND name='{home}'");
