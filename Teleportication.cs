@@ -43,7 +43,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.2.5")]
+    [Info("Teleportication", "RFC1920", "1.2.6")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -58,7 +58,7 @@ namespace Oxide.Plugins
         private readonly Dictionary<string, Dictionary<ulong, TPTimer>> CooldownTimers = new Dictionary<string, Dictionary<ulong, TPTimer>>();
         private Dictionary<string, Dictionary<ulong, float>> DailyLimits = new Dictionary<string, Dictionary<ulong, float>>();
         private readonly Dictionary<ulong, TPRTimer> TPRTimers = new Dictionary<ulong, TPRTimer>();
-        private int ts;
+        private int dateInt;
 
         //private Coroutine townPositionsC;
         private List<Vector3> townPositions = new List<Vector3>();
@@ -153,7 +153,6 @@ namespace Oxide.Plugins
 
         private void Init()
         {
-            ts = Convert.ToInt32(DateTime.Now.ToString("HHmmss"));
             // Dummy file, creates the directory for us.
             DynamicConfigFile dataFile = Interface.Oxide.DataFileSystem.GetDatafile(Name + "/teleportication");
             dataFile.Save();
@@ -220,6 +219,7 @@ namespace Oxide.Plugins
                     }
                 }
             }
+            MidnightDetect(true);
         }
 
         private void Unload()
@@ -1167,13 +1167,14 @@ namespace Oxide.Plugins
                 return false;
             }
             // LIMIT
-            Dictionary<ulong, float> userLimits = new Dictionary<ulong, float>();
-            DailyLimits.TryGetValue(type, out userLimits);
-            if (userLimits.Count == 0)
+            float userLimit;
+            DoLog($"Checking daily limit for {player.displayName} for {type}");
+            if (!DailyLimits[type].TryGetValue(player.userID, out userLimit))
             {
                 DailyLimits[type].Add(player.userID, 0);
+                userLimit = 0;
             }
-            if (AtLimit(player.userID, type, DailyLimits[type][player.userID]))
+            if (AtLimit(player.userID, type, userLimit))
             {
                 Message(player.IPlayer, "limit", type.ToLower(), DailyLimits[type][player.userID].ToString(), GetDailyLimit(player.userID, type).ToString());
                 return false;
@@ -1866,7 +1867,7 @@ namespace Oxide.Plugins
 
                 if (monument.name.Contains("cave"))
                 {
-                    DoLog("  Adding to cave list");
+                    //DoLog("  Adding to cave list");
                     cavePos.Add(name, monument.transform.position);
                 }
                 else if (monument.name.Contains("compound") && configData.Options.AutoGenOutpost)
@@ -1905,14 +1906,14 @@ namespace Oxide.Plugins
                     }
                     monPos.Add(name, monument.transform.position);
                     monSize.Add(name, extents);
-                    DoLog($"Adding Monument: {name}, pos: {monument.transform.position.ToString()}, size: {extents.ToString()}");
+                    //DoLog($"Adding Monument: {name}, pos: {monument.transform.position.ToString()}, size: {extents.ToString()}");
                     if (name.Contains("Entrance Bunker") && configData.Options.AutoGenTunnels)
                     {
                         Vector3 pos = monument.transform.position;
                         pos.y = TerrainMeta.HeightMap.GetHeight(monument.transform.position);
                         string tname = name;
                         tname = tname.Replace("Entrance Bunker ", "Tunnel ");
-                        DoLog($"Adding {tname}, pos: {pos.ToString()}");
+                        //DoLog($"Adding {tname}, pos: {pos.ToString()}");
                         RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('{tname}', '{pos.ToString()}')");
                     }
                 }
@@ -2221,17 +2222,27 @@ namespace Oxide.Plugins
             SavedPoints[player.userID] = player.transform.position;
         }
 
-        private void NextDay()
+        private void MidnightDetect(bool startup=false)
         {
-            // Has midnight passed since the last plugin load?
-            int now = Convert.ToInt32(DateTime.Now.ToString("HHmmss"));
-            if (now > ts)
+            DateTime dt = TOD_Sky.Instance.Cycle.DateTime;
+            if (startup)
             {
+                dateInt = Convert.ToInt32(dt.Hour.ToString().PadLeft(2, '0') + dt.Minute.ToString().PadLeft(2, '0') + dt.Second.ToString().PadLeft(2, '0'));
+                DoLog($"Startup: Set start time to {dateInt.ToString().PadLeft(6, '0')} for daily limits");
+                timer.Once(60f, () => MidnightDetect());
                 return;
             }
-            DoLog("Clearing the daily limits.");
-            // Day changed.  Reset the daily limits.
-            ts = now;
+
+            // Has game midnight passed since the last run?
+            int now = Convert.ToInt32(dt.Hour.ToString().PadLeft(2, '0') + dt.Minute.ToString().PadLeft(2, '0') + dt.Second.ToString().PadLeft(2, '0'));
+            if (now > dateInt)
+            {
+                //DoLog($"MidnightDetect: Still same day.  NOW {now.ToString().PadLeft(6, '0')} > Startup {dateInt.ToString().PadLeft(6, '0')}.");
+                timer.Once(60f, () => MidnightDetect());
+                return;
+            }
+            DoLog($"MidnightDetect: Day changed!  NOW {now.ToString().PadLeft(6, '0')} < Startup {dateInt.ToString().PadLeft(6, '0')}.  Clearing the daily limits.");
+            dateInt = now;
             DailyLimits = new Dictionary<string, Dictionary<ulong, float>>
             {
                 { "Home", new Dictionary<ulong, float>() },
@@ -2244,6 +2255,7 @@ namespace Oxide.Plugins
                 { "Outpost", new Dictionary<ulong, float>() },
                 { "Tunnel", new Dictionary<ulong, float>() }
             };
+            timer.Once(60f, () => MidnightDetect());
         }
 
 //        public void TeleportToPlayer(BasePlayer player, BasePlayer target) => Teleport(player, target.transform.position);
@@ -2254,7 +2266,6 @@ namespace Oxide.Plugins
             SaveLocation(player);
             HandleTimer(player.userID, type);
             HandleCooldown(player.userID, type);
-            NextDay();
 
             if (player.net?.connection != null) player.SetPlayerFlag(BasePlayer.PlayerFlags.ReceivingSnapshot, true);
 
