@@ -43,7 +43,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.2.6")]
+    [Info("Teleportication", "RFC1920", "1.2.7")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -149,6 +149,7 @@ namespace Oxide.Plugins
                     }
                 }
             }
+            MidnightDetect(true);
         }
 
         private void Init()
@@ -219,7 +220,6 @@ namespace Oxide.Plugins
                     }
                 }
             }
-            MidnightDetect(true);
         }
 
         private void Unload()
@@ -1166,6 +1166,7 @@ namespace Oxide.Plugins
                 Message(player.IPlayer, "obstructed");
                 return false;
             }
+
             // LIMIT
             float userLimit;
             DoLog($"Checking daily limit for {player.displayName} for {type}");
