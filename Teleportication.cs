@@ -43,7 +43,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.2.8")]
+    [Info("Teleportication", "RFC1920", "1.2.9")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -725,6 +725,7 @@ namespace Oxide.Plugins
                             AddCooldown(player, StringToVector3(homes[0]), "Home", "Home");
                             HandleCooldown(player.userID, "Home", true);
 
+                            if (!DailyUsage["Home"].ContainsKey(player.userID)) DailyUsage["Home"].Add(player.userID, 0);
                             float usage = GetDailyLimit(player.userID, "Home") - DailyUsage["Home"][player.userID];
                             if (usage > 0)
                             {
@@ -776,6 +777,7 @@ namespace Oxide.Plugins
                         AddCooldown(player, StringToVector3(homes[0]), "Home", "Home");
                         HandleCooldown(player.userID, "Home", true);
 
+                        if (!DailyUsage["Home"].ContainsKey(player.userID)) DailyUsage["Home"].Add(player.userID, 0);
                         float usage = GetDailyLimit(player.userID, "Home") - DailyUsage["Home"][player.userID];
                         if (usage > 0)
                         {
@@ -937,6 +939,7 @@ namespace Oxide.Plugins
                                 AddCooldown(player, StringToVector3(tunnel[0]), dtype, Lang("town"));
                                 HandleCooldown(player.userID, dtype, true);
 
+                                if (!DailyUsage[dtype].ContainsKey(player.userID)) DailyUsage[dtype].Add(player.userID, 0);
                                 float usage = GetDailyLimit(player.userID, dtype) - DailyUsage[dtype][player.userID];
                                 if (usage > 0)
                                 {
@@ -981,6 +984,7 @@ namespace Oxide.Plugins
                                 }
                                 AddCooldown(player, StringToVector3(target[0]), type, Lang("town"));
                                 HandleCooldown(player.userID, type, true);
+                                if (!DailyUsage[dtype].ContainsKey(player.userID)) DailyUsage[dtype].Add(player.userID, 0);
                                 float usage = GetDailyLimit(player.userID, dtype) - DailyUsage[dtype][player.userID];
                                 if (usage > 0)
                                 {
@@ -1026,6 +1030,7 @@ namespace Oxide.Plugins
                     }
                     AddCooldown(player, oldloc, "TPB", Lang("tpb"));
                     HandleCooldown(player.userID, "TPB", true);
+                    if (!DailyUsage["TPB"].ContainsKey(player.userID)) DailyUsage["TPB"].Add(player.userID, 0);
                     float usage = GetDailyLimit(player.userID, "TPB") - DailyUsage["TPB"][player.userID];
                     if (usage > 0)
                     {
@@ -1116,6 +1121,7 @@ namespace Oxide.Plugins
                     TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, cooldown = configData.Types["TPR"].CountDown, source = srcpl, targetName = iplayer.Name, targetLocation = pl.transform.position });
                     HandleTimer(sourceId, "TPR", true);
 
+                    if (!DailyUsage["TPR"].ContainsKey(srcpl.userID)) DailyUsage["TPR"].Add(srcpl.userID, 0);
                     float usage = GetDailyLimit(srcpl.userID, "TPR") - DailyUsage["TPR"][srcpl.userID];
                     if (usage > 0)
                     {
@@ -1325,12 +1331,15 @@ namespace Oxide.Plugins
                 string isvip = "";
                 // Check all listed VIP permissions, if any, and set the user's limit to that if they have that permission
                 // Use the maximum value obtained among all matching vip permissions.
-                foreach (KeyValuePair<string, VIPSetting> vip in configData.Types["Home"].VIPSettings)
+                if (configData.Types["Home"].VIPSettings != null)
                 {
-                    if (permission.UserHasPermission(player.UserIDString, vip.Key) && vip.Value.VIPHomesLimit > homelimit)
+                    foreach (KeyValuePair<string, VIPSetting> vip in configData.Types["Home"].VIPSettings)
                     {
-                        isvip = $" (from {vip.Key} permission)";
-                        homelimit = vip.Value.VIPHomesLimit;
+                        if (permission.UserHasPermission(player.UserIDString, vip.Key) && vip.Value.VIPHomesLimit > homelimit)
+                        {
+                            isvip = $" (from {vip.Key} permission)";
+                            homelimit = vip.Value.VIPHomesLimit;
+                        }
                     }
                 }
                 DoLog($"Homelimit for {player.displayName}, set to {homelimit.ToString()}{isvip}.");
