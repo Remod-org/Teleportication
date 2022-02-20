@@ -43,7 +43,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.2.7")]
+    [Info("Teleportication", "RFC1920", "1.2.8")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -56,7 +56,7 @@ namespace Oxide.Plugins
 
         private readonly Dictionary<ulong, TPTimer> TeleportTimers = new Dictionary<ulong, TPTimer>();
         private readonly Dictionary<string, Dictionary<ulong, TPTimer>> CooldownTimers = new Dictionary<string, Dictionary<ulong, TPTimer>>();
-        private Dictionary<string, Dictionary<ulong, float>> DailyLimits = new Dictionary<string, Dictionary<ulong, float>>();
+        private Dictionary<string, Dictionary<ulong, float>> DailyUsage = new Dictionary<string, Dictionary<ulong, float>>();
         private readonly Dictionary<ulong, TPRTimer> TPRTimers = new Dictionary<ulong, TPRTimer>();
         private int dateInt;
 
@@ -92,7 +92,7 @@ namespace Oxide.Plugins
         {
             public Timer timer;
             public float start;
-            public float countdown;
+            public float cooldown;
             public string type;
             public BasePlayer source;
             public string targetName;
@@ -172,15 +172,15 @@ namespace Oxide.Plugins
             CooldownTimers.Add("Outpost", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("Tunnel", new Dictionary<ulong, TPTimer>());
 
-            DailyLimits.Add("Home", new Dictionary<ulong, float>());
-            DailyLimits.Add("Town", new Dictionary<ulong, float>());
-            DailyLimits.Add("TPA", new Dictionary<ulong, float>());
-            DailyLimits.Add("TPB", new Dictionary<ulong, float>());
-            DailyLimits.Add("TPR", new Dictionary<ulong, float>());
-            DailyLimits.Add("TP", new Dictionary<ulong, float>());
-            DailyLimits.Add("Bandit", new Dictionary<ulong, float>());
-            DailyLimits.Add("Outpost", new Dictionary<ulong, float>());
-            DailyLimits.Add("Tunnel", new Dictionary<ulong, float>());
+            DailyUsage.Add("Home", new Dictionary<ulong, float>());
+            DailyUsage.Add("Town", new Dictionary<ulong, float>());
+            DailyUsage.Add("TPA", new Dictionary<ulong, float>());
+            DailyUsage.Add("TPB", new Dictionary<ulong, float>());
+            DailyUsage.Add("TPR", new Dictionary<ulong, float>());
+            DailyUsage.Add("TP", new Dictionary<ulong, float>());
+            DailyUsage.Add("Bandit", new Dictionary<ulong, float>());
+            DailyUsage.Add("Outpost", new Dictionary<ulong, float>());
+            DailyUsage.Add("Tunnel", new Dictionary<ulong, float>());
 
             LoadData();
 
@@ -242,6 +242,7 @@ namespace Oxide.Plugins
                 ["homesavail"] = "The following homes have been set:",
                 ["homesavailfor"] = "The following homes have been set by {0}:",
                 ["nohomes"] = "No homes have been set.",
+                ["hometoomany"] = "You cannot set any more homes.  Limit is {0}.",
                 ["hometooclose"] = "Too close to another home - minimum distance {0}",
                 ["homeset"] = "Home {0} has been set.",
                 ["homeremoved"] = "Home {0} has been removed.",
@@ -256,6 +257,7 @@ namespace Oxide.Plugins
                 ["list"] = "list",
                 ["home"] = "Home",
                 ["tpb"] = "old location",
+                ["debug"] = "Debug set to {0}",
                 ["tpr"] = "another player",
                 ["town"] = "Town",
                 ["outpost"] = "Outpost",
@@ -370,7 +372,7 @@ namespace Oxide.Plugins
                             AddCooldown(iplayer.Object as BasePlayer, pos, "TP", "TP");
                             HandleCooldown(userid, "TP", true);
                         }
-                        else if (TeleportTimers[userid].countdown == 0)
+                        else if (TeleportTimers[userid].cooldown == 0)
                         {
                             Teleport(iplayer.Object as BasePlayer, pos, "TP");
                         }
@@ -520,6 +522,10 @@ namespace Oxide.Plugins
                         Message(iplayer, "flags");
                         Message(iplayer, flags);
 
+                        break;
+                    case "debug":
+                        configData.Options.debug = !configData.Options.debug;
+                        Message(iplayer, "debug", configData.Options.debug.ToString());
                         break;
                     case "backup":
                         string backupfile = "teleportication_" + DateTime.Now.ToString("yyyy-MM-dd_HHmmss") + ".db";
@@ -719,15 +725,15 @@ namespace Oxide.Plugins
                             AddCooldown(player, StringToVector3(homes[0]), "Home", "Home");
                             HandleCooldown(player.userID, "Home", true);
 
-                            float limit = GetDailyLimit(player.userID, "Home");
-                            if (limit > 0)
+                            float usage = GetDailyLimit(player.userID, "Home") - DailyUsage["Home"][player.userID];
+                            if (usage > 0)
                             {
-                                Message(iplayer, "remaining", limit.ToString(), "Home");
+                                Message(iplayer, "remaining", usage.ToString(), "Home");
                             }
 
                             Message(iplayer, "teleportinghome", home + "(" + RemoveSpecialCharacters(target.displayName) + ")", configData.Types["Home"].CountDown.ToString());
                         }
-                        else if (TeleportTimers[player.userID].countdown == 0)
+                        else if (TeleportTimers[player.userID].cooldown == 0)
                         {
                             Teleport(player, StringToVector3(homes[0]), "home");
                         }
@@ -770,15 +776,15 @@ namespace Oxide.Plugins
                         AddCooldown(player, StringToVector3(homes[0]), "Home", "Home");
                         HandleCooldown(player.userID, "Home", true);
 
-                        float limit = GetDailyLimit(player.userID, "Home");
-                        if (limit > 0)
+                        float usage = GetDailyLimit(player.userID, "Home") - DailyUsage["Home"][player.userID];
+                        if (usage > 0)
                         {
-                            Message(iplayer, "remaining", limit.ToString(), "Home");
+                            Message(iplayer, "remaining", usage.ToString(), "Home");
                         }
 
                         Message(iplayer, "teleportinghome", home, configData.Types["Home"].CountDown.ToString());
                     }
-                    else if (TeleportTimers[player.userID].countdown == 0)
+                    else if (TeleportTimers[player.userID].cooldown == 0)
                     {
                         Teleport(player, StringToVector3(homes[0]), "home");
                     }
@@ -930,15 +936,16 @@ namespace Oxide.Plugins
                                 }
                                 AddCooldown(player, StringToVector3(tunnel[0]), dtype, Lang("town"));
                                 HandleCooldown(player.userID, dtype, true);
-                                float limit = GetDailyLimit(player.userID, dtype);
-                                if (limit > 0)
+
+                                float usage = GetDailyLimit(player.userID, dtype) - DailyUsage[dtype][player.userID];
+                                if (usage > 0)
                                 {
-                                    Message(iplayer, "remaining", limit.ToString(), dtype);
+                                    Message(iplayer, "remaining", usage.ToString(), Lang(dtype));
                                 }
 
                                 Message(iplayer, "teleporting", command, configData.Types[dtype].CountDown.ToString());
                             }
-                            else if (TeleportTimers[player.userID].countdown == 0)
+                            else if (TeleportTimers[player.userID].cooldown == 0)
                             {
                                 Teleport(player, StringToVector3(tunnel[0]), command);
                             }
@@ -974,15 +981,15 @@ namespace Oxide.Plugins
                                 }
                                 AddCooldown(player, StringToVector3(target[0]), type, Lang("town"));
                                 HandleCooldown(player.userID, type, true);
-                                float limit = GetDailyLimit(player.userID, type);
-                                if (limit > 0)
+                                float usage = GetDailyLimit(player.userID, dtype) - DailyUsage[dtype][player.userID];
+                                if (usage > 0)
                                 {
-                                    Message(iplayer, "remaining", limit.ToString(), type);
+                                    Message(iplayer, "remaining", usage.ToString(), Lang(dtype));
                                 }
 
                                 Message(iplayer, "teleporting", command, configData.Types[type].CountDown.ToString());
                             }
-                            else if (TeleportTimers[player.userID].countdown == 0)
+                            else if (TeleportTimers[player.userID].cooldown == 0)
                             {
                                 Teleport(player, StringToVector3(target[0]), command);
                             }
@@ -1019,10 +1026,10 @@ namespace Oxide.Plugins
                     }
                     AddCooldown(player, oldloc, "TPB", Lang("tpb"));
                     HandleCooldown(player.userID, "TPB", true);
-                    float limit = GetDailyLimit(player.userID, "TPB");
-                    if (limit > 0)
+                    float usage = GetDailyLimit(player.userID, "TPB") - DailyUsage["TPB"][player.userID];
+                    if (usage > 0)
                     {
-                        Message(iplayer, "remaining", limit.ToString(), "TPB");
+                        Message(iplayer, "remaining", usage.ToString(), "TPB");
                     }
 
                     Message(iplayer, "teleporting", Lang("tpb"), configData.Types["TPB"].CountDown.ToString());
@@ -1106,13 +1113,13 @@ namespace Oxide.Plugins
                     if (TeleportTimers.ContainsKey(sourceId)) TeleportTimers.Remove(sourceId);
                     BasePlayer srcpl = src.Object as BasePlayer;
                     BasePlayer pl = iplayer.Object as BasePlayer;
-                    TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown, source = srcpl, targetName = iplayer.Name, targetLocation = pl.transform.position });
+                    TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, cooldown = configData.Types["TPR"].CountDown, source = srcpl, targetName = iplayer.Name, targetLocation = pl.transform.position });
                     HandleTimer(sourceId, "TPR", true);
 
-                    float limit = GetDailyLimit(srcpl.userID, "TPR");
-                    if (limit > 0)
+                    float usage = GetDailyLimit(srcpl.userID, "TPR") - DailyUsage["TPR"][srcpl.userID];
+                    if (usage > 0)
                     {
-                        Message(src, "remaining", limit.ToString(), "TPR");
+                        Message(iplayer, "remaining", usage.ToString(), "TPR");
                     }
 
                     Message(src, "tpanotify", iplayer.Name, configData.Types["TPR"].CountDown.ToString());
@@ -1168,25 +1175,19 @@ namespace Oxide.Plugins
             }
 
             // LIMIT
-            float userLimit;
-            DoLog($"Checking daily limit for {player.displayName} for {type}");
-            if (!DailyLimits[type].TryGetValue(player.userID, out userLimit))
+            DoLog($"Checking daily usage vs. limit for {player.displayName} for {type}");
+            float limit = 0;
+            if (AtLimit(player.userID, type, out limit))
             {
-                DailyLimits[type].Add(player.userID, 0);
-                userLimit = 0;
-            }
-            if (AtLimit(player.userID, type, userLimit))
-            {
-                Message(player.IPlayer, "limit", type.ToLower(), DailyLimits[type][player.userID].ToString(), GetDailyLimit(player.userID, type).ToString());
+                Message(player.IPlayer, "limit", type.ToLower(), DailyUsage[type][player.userID].ToString(), limit.ToString());
                 return false;
             }
-            DailyLimits[type][player.userID]++;
 
             // COOLDOWN
-            if (HasCooldown(player.userID, type))
+            float cooldown = 0;
+            if (CheckCooldown(player.userID, type, out cooldown))
             {
-                string timesince = Math.Floor(CooldownTimers[type][player.userID].start + CooldownTimers[type][player.userID].countdown - Time.realtimeSinceStartup).ToString();
-                Message(player.IPlayer, "cooldown", type.ToLower(), timesince);
+                Message(player.IPlayer, "cooldown", type.ToLower(), cooldown);
                 return false;
             }
 
@@ -1317,9 +1318,29 @@ namespace Oxide.Plugins
             reason = null;
             bool rtrn = true;
 
-            List<string> checkhome = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{player.userID}'") ?? null;
+            List<string> checkhome = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{player.userID}'");
             if (checkhome != null)
             {
+                float homelimit = configData.Types["Home"].HomesLimit;
+                string isvip = "";
+                // Check all listed VIP permissions, if any, and set the user's limit to that if they have that permission
+                // Use the maximum value obtained among all matching vip permissions.
+                foreach (KeyValuePair<string, VIPSetting> vip in configData.Types["Home"].VIPSettings)
+                {
+                    if (permission.UserHasPermission(player.UserIDString, vip.Key) && vip.Value.VIPHomesLimit > homelimit)
+                    {
+                        isvip = $" (from {vip.Key} permission)";
+                        homelimit = vip.Value.VIPHomesLimit;
+                    }
+                }
+                DoLog($"Homelimit for {player.displayName}, set to {homelimit.ToString()}{isvip}.");
+
+                if (homelimit > 0 && checkhome.Count >= homelimit)
+                {
+                    reason = Lang("hometoomany", null, homelimit.ToString());
+                    return false;
+                }
+
                 foreach (string home in checkhome)
                 {
                     if (Vector3.Distance(player.transform.position, StringToVector3(home)) < configData.Options.HomeMinimumDistance)
@@ -2035,13 +2056,12 @@ namespace Oxide.Plugins
 
         public void AddTimer(BasePlayer player, Vector3 targetLoc, string type, string typeName)
         {
+            DoLog($"Creating a {type} Countdown TPTimer object for {player.UserIDString}.");
             TeleportTimers.Add(
                 player.userID,
                 new TPTimer()
                 {
                     type = type,
-                    start = Time.realtimeSinceStartup,
-                    countdown = configData.Types[type].CountDown,
                     source = player,
                     targetName = Lang(typeName),
                     targetLocation = targetLoc
@@ -2055,7 +2075,24 @@ namespace Oxide.Plugins
             {
                 if (start)
                 {
-                    TeleportTimers[userid].timer = timer.Once(TeleportTimers[userid].countdown, () => Teleport(TeleportTimers[userid].source, TeleportTimers[userid].targetLocation, type));
+                    float countdown = configData.Types[type].CountDown;
+                    string isvip = "";
+                    if (configData.Types[type].VIPSettings != null)
+                    {
+                        foreach (KeyValuePair<string, VIPSetting> vip in configData.Types[type].VIPSettings)
+                        {
+                            if (permission.UserHasPermission(userid.ToString(), vip.Key) && vip.Value.VIPCountDown < countdown)
+                            {
+                                isvip = $" (from {vip.Key} permission)";
+                                countdown = vip.Value.VIPCoolDown + vip.Value.VIPCountDown;
+                            }
+                        }
+                    }
+
+                    DoLog($"Creating a {type} countdown timer for {userid}.  Timer will be set to {countdown.ToString()} seconds{isvip}.");
+                    TeleportTimers[userid].start = Time.realtimeSinceStartup;
+                    TeleportTimers[userid].cooldown = countdown;
+                    TeleportTimers[userid].timer = timer.Once(TeleportTimers[userid].cooldown, () => Teleport(TeleportTimers[userid].source, TeleportTimers[userid].targetLocation, type));
                 }
                 else
                 {
@@ -2088,13 +2125,12 @@ namespace Oxide.Plugins
 
         public void AddCooldown(BasePlayer player, Vector3 targetLoc, string type, string typeName)
         {
+            DoLog($"Creating a {type} Cooldown TPTimer object for {player.UserIDString}.");
             CooldownTimers[type].Add(
                 player.userID,
                 new TPTimer()
                 {
                     type = type,
-                    start = Time.realtimeSinceStartup,
-                    countdown = configData.Types[type].CoolDown,
                     source = player,
                     targetName = Lang(typeName),
                     targetLocation = targetLoc
@@ -2102,11 +2138,13 @@ namespace Oxide.Plugins
             );
         }
 
-        public bool HasCooldown(ulong userid, string type)
+        public bool CheckCooldown(ulong userid, string type, out float cooldown)
         {
+            cooldown = 0;
             if (CooldownTimers[type].ContainsKey(userid))
             {
-                DoLog("Found a cooldown timer");
+                cooldown = (float)Math.Floor((CooldownTimers[type][userid].start + CooldownTimers[type][userid].cooldown) - Time.realtimeSinceStartup);
+                DoLog($"Found a {type} cooldown timer for {userid.ToString()} with {cooldown.ToString()} second(s) remaining");
                 return true;
             }
             return false;
@@ -2114,17 +2152,26 @@ namespace Oxide.Plugins
 
         public void HandleCooldown(ulong userid, string type, bool start = false, bool canbypass = false, double bypassamount = 0, bool dobypass = false, bool kill = false)
         {
-            TPTimer check = new TPTimer();
-            if (!CooldownTimers[type].ContainsKey(userid))
-            {
-                CooldownTimers[type].Add(userid, new TPTimer());
-            }
-
-            DoLog($"HandleCooldown found a {type} timer for {userid.ToString()}");
             if (start)
             {
-                DoLog($"Creating a cooldown timer for {userid}, timer will be set to {configData.Types[type].CoolDown.ToString()} seconds.");
-                CooldownTimers[type][userid].timer = timer.Once(configData.Types[type].CoolDown, () => HandleCooldown(userid, type, false, canbypass, bypassamount, dobypass, true));
+                float cooldown = configData.Types[type].CoolDown + configData.Types[type].CountDown;
+                string isvip = "";
+                if (configData.Types[type].VIPSettings != null)
+                {
+                    foreach (KeyValuePair<string, VIPSetting> vip in configData.Types[type].VIPSettings)
+                    {
+                        if (permission.UserHasPermission(userid.ToString(), vip.Key) && (vip.Value.VIPCoolDown + vip.Value.VIPCountDown) < cooldown)
+                        {
+                            isvip = $" (from {vip.Key} permission)";
+                            cooldown = vip.Value.VIPCoolDown + vip.Value.VIPCountDown;
+                        }
+                    }
+                }
+
+                DoLog($"Creating a {type} cooldown timer for {userid}.  Timer will be set to {cooldown.ToString()} seconds{isvip} including countdown.");
+                CooldownTimers[type][userid].start = Time.realtimeSinceStartup;
+                CooldownTimers[type][userid].cooldown = cooldown;
+                CooldownTimers[type][userid].timer = timer.Once(cooldown, () => HandleCooldown(userid, type, false, canbypass, bypassamount, dobypass, true));
             }
             else if (kill)
             {
@@ -2135,35 +2182,37 @@ namespace Oxide.Plugins
         }
 
         // Check limit for any userid and type based on current activity
-        public bool AtLimit(ulong userid, string type, float current)
+        public bool AtLimit(ulong userid, string type, out float limit)
         {
-            float limit = GetDailyLimit(userid, type);
+            float current = 0;
+            if (!DailyUsage[type].TryGetValue(userid, out current))
+            {
+                DailyUsage[type].Add(userid, 0);
+            }
+
+            limit = GetDailyLimit(userid, type);
             return current >= limit && limit != 0;
         }
 
         private float GetDailyLimit(ulong userid, string type)
         {
             float limit = configData.Types[type].DailyLimit;
-
-            IPlayer iplayer = covalence.Players.FindPlayerById(userid.ToString());
-
-            if (configData.Types[type].VIPSettings == null)
-            {
-                return limit;
-            }
             // Check for player VIP permissions
-            foreach (KeyValuePair<string, VIPSetting> perm in configData.Types[type].VIPSettings)
+            if (configData.Types[type].VIPSettings != null)
             {
-                if (iplayer.HasPermission(perm.Key))
+                foreach (KeyValuePair<string, VIPSetting> perm in configData.Types[type].VIPSettings)
                 {
-                    float newlimit = perm.Value.VIPDailyLimit;
-                    if (newlimit == 0)
+                    if (permission.UserHasPermission(userid.ToString(), perm.Key))
                     {
-                        limit = 0;
-                    }
-                    else if (newlimit > limit)
-                    {
-                        limit = newlimit;
+                        float newlimit = perm.Value.VIPDailyLimit;
+                        if (newlimit == 0)
+                        {
+                            limit = 0;
+                        }
+                        else if (newlimit > limit)
+                        {
+                            limit = newlimit;
+                        }
                     }
                 }
             }
@@ -2244,7 +2293,7 @@ namespace Oxide.Plugins
             }
             DoLog($"MidnightDetect: Day changed!  NOW {now.ToString().PadLeft(6, '0')} < Startup {dateInt.ToString().PadLeft(6, '0')}.  Clearing the daily limits.");
             dateInt = now;
-            DailyLimits = new Dictionary<string, Dictionary<ulong, float>>
+            DailyUsage = new Dictionary<string, Dictionary<ulong, float>>
             {
                 { "Home", new Dictionary<ulong, float>() },
                 { "Town", new Dictionary<ulong, float>() },
@@ -2267,6 +2316,7 @@ namespace Oxide.Plugins
             SaveLocation(player);
             HandleTimer(player.userID, type);
             HandleCooldown(player.userID, type);
+            DailyUsage[type][player.userID]++;
 
             if (player.net?.connection != null) player.SetPlayerFlag(BasePlayer.PlayerFlags.ReceivingSnapshot, true);
 
@@ -2320,6 +2370,11 @@ namespace Oxide.Plugins
                 }
             }
 
+            if (configData.Version < new VersionNumber(1, 2, 8))
+            {
+                configData.Types["Home"].HomesLimit = 0;
+            }
+
             configData.Version = Version;
             SaveConfig(configData);
         }
@@ -2355,32 +2410,65 @@ namespace Oxide.Plugins
                 Version = Version
             };
 
-            config.Types["Home"].CountDown = 5f;
-            config.Types["Home"].CoolDown = 120f;
-            config.Types["Home"].DailyLimit = 30f;
-            config.Types["Town"].CountDown = 5f;
-            config.Types["Town"].CoolDown = 120f;
-            config.Types["Town"].DailyLimit = 30f;
-            config.Types["Bandit"].CountDown = 5f;
-            config.Types["Bandit"].CoolDown = 120f;
-            config.Types["Bandit"].DailyLimit = 30f;
-            config.Types["Bandit"].BlockOnHostile = true;
-            config.Types["Outpost"].CountDown = 5f;
-            config.Types["Outpost"].CoolDown = 120f;
-            config.Types["Outpost"].DailyLimit = 30f;
-            config.Types["Outpost"].BlockOnHostile = true;
-            config.Types["TPB"].CountDown = 5f;
-            config.Types["TPB"].CoolDown = 120f;
-            config.Types["TPB"].DailyLimit = 30f;
-            config.Types["TPC"].CountDown = 5f;
-            config.Types["TPC"].CoolDown = 120f;
-            config.Types["TPC"].DailyLimit = 30f;
-            config.Types["TPR"].CountDown = 5f;
-            config.Types["TPR"].CoolDown = 120f;
-            config.Types["TPR"].DailyLimit = 30f;
-            config.Types["TP"].CountDown = 2f;
-            config.Types["TP"].CoolDown = 10f;
-            config.Types["TP"].DailyLimit = 30f;
+            config.Types["Home"] = new CmdOptions()
+            {
+                CountDown = 5f,
+                CoolDown = 120f,
+                DailyLimit = 30f,
+                HomesLimit = 10f,
+                BypassAmount = 0f,
+            };
+            config.Types["Town"] = new CmdOptions()
+            {
+                CountDown = 5f,
+                CoolDown = 120f,
+                DailyLimit = 30f,
+                BypassAmount = 0f
+            };
+            config.Types["Bandit"] = new CmdOptions()
+            {
+                CountDown = 5f,
+                CoolDown = 120f,
+                DailyLimit = 30f,
+                BlockOnHostile = true,
+                BypassAmount = 0f
+            };
+            config.Types["Outpost"] = new CmdOptions()
+            {
+                CountDown = 5f,
+                CoolDown = 120f,
+                DailyLimit = 30f,
+                BlockOnHostile = true,
+                BypassAmount = 0f
+            };
+            config.Types["TPB"] = new CmdOptions()
+            {
+                CountDown = 5f,
+                CoolDown = 120f,
+                DailyLimit = 30f,
+                BypassAmount = 0f
+            };
+            config.Types["TPC"] = new CmdOptions()
+            {
+                CountDown = 5f,
+                CoolDown = 120f,
+                DailyLimit = 30f,
+                BypassAmount = 0f
+            };
+            config.Types["TPR"] = new CmdOptions()
+            {
+                CountDown = 5f,
+                CoolDown = 120f,
+                DailyLimit = 30f,
+                BypassAmount = 0f
+            };
+            config.Types["TP"] = new CmdOptions()
+            {
+                CountDown = 2f,
+                CoolDown = 10f,
+                DailyLimit = 30f,
+                BypassAmount = 0f
+            };
 
             SaveConfig(config);
         }
@@ -2470,11 +2558,12 @@ namespace Oxide.Plugins
             public bool BlockIfInvisible;
             public bool BlockInTunnel = true;
             public bool AutoAccept;
-            public float DailyLimit = 0;
-            public float CountDown = 5;
-            public float CoolDown = 30;
+            public float DailyLimit;
+            public float HomesLimit;
+            public float CountDown;
+            public float CoolDown;
             public bool AllowBypass;
-            public double BypassAmount = 0;
+            public double BypassAmount;
         }
 
         private class VIPOptions
@@ -2484,20 +2573,12 @@ namespace Oxide.Plugins
 
         public class VIPSetting
         {
-            public float VIPDailyLimit { get; set; }
-            public float VIPCountDown { get; set; }
-            public float VIPCoolDown { get; set; }
-            public bool VIPAllowBypass { get; set; }
-            public double VIPBypassAmount { get; set; }
-
-            public VIPSetting()
-            {
-                VIPDailyLimit = 100f;
-                VIPCountDown = 0f;
-                VIPCoolDown = 0f;
-                VIPAllowBypass = true;
-                VIPBypassAmount = 0f;
-            }
+            public float VIPDailyLimit;
+            public float VIPHomesLimit;
+            public float VIPCountDown;
+            public float VIPCoolDown;
+            public bool VIPAllowBypass;
+            public double VIPBypassAmount;
         }
         #endregion
 
@@ -2796,7 +2877,7 @@ namespace Oxide.Plugins
             public int Cooldown { get; set; }
             public int Countdown { get; set; }
             public int DailyLimit { get; set; }
-            public Dictionary<string, int> VIPDailyLimits { get; set; }
+            public Dictionary<string, int> VIPDailyUsage { get; set; }
             public Dictionary<string, int> VIPCooldowns { get; set; }
             public Dictionary<string, int> VIPCountdowns { get; set; }
             public int LocationRadius { get; set; }
@@ -2822,7 +2903,7 @@ namespace Oxide.Plugins
             public int Cooldown { get; set; }
             public int Countdown { get; set; }
             public int DailyLimit { get; set; }
-            public Dictionary<string, int> VIPDailyLimits { get; set; }
+            public Dictionary<string, int> VIPDailyUsage { get; set; }
             public Dictionary<string, int> VIPCooldowns { get; set; }
             public Dictionary<string, int> VIPCountdowns { get; set; }
             public int RequestDuration { get; set; }
@@ -2842,7 +2923,7 @@ namespace Oxide.Plugins
             public int Cooldown { get; set; }
             public int Countdown { get; set; }
             public int DailyLimit { get; set; }
-            public Dictionary<string, int> VIPDailyLimits { get; set; }
+            public Dictionary<string, int> VIPDailyUsage { get; set; }
             public Dictionary<string, int> VIPCooldowns { get; set; }
             public Dictionary<string, int> VIPCountdowns { get; set; }
             public string Location { get; set; }
