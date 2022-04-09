@@ -33,6 +33,8 @@ A lot of the familiar commands from older teleport plugins are still there, with
     - /station -- List available tunnel stations
       - /tunnel NAME OF TUNNEL -- Teleport to a tunnel station (DANGEROUS: Procted by tunnel dwellers)
 
+Note that "set" can be changed by config, e.g. for /home set, /town set...
+
 ### Permissions
     - teleportication.use     - /home
     - teleportication.tpb     - /tpb
@@ -190,6 +192,50 @@ Despite some similarites, the configuration and data files from other teleport p
 Teleportication uses SQLite for home, town, bandit, and outpost storage.  The file is saved in {oxidedata}/Teleportication/teleportication.db.
 
 In-memory objects keep track of previous location for tpb, pending tpr/tpa, etc.  This could change as development progresses.
+
+### For Developers
+    The following can be used for example as follows:
+
+```cs
+    [PluginReference]
+    private readonly Plugin Teleportication;
+
+    bool success = (bool) Teleportication.CallHook("SetServerTp", "mytarget", Vector3 OBJECT);
+    bool success = (bool) Teleportication.CallHook("UnsetServerTp", "mytarget");
+    object x = Teleportication.CallHook("GetServerTp");
+    object x = Teleportication.CallHook("GetServerTp", "mytarget");
+    bool success = (bool) Teleportication.CallHook("ResetServerTp");
+```
+
+#### Hooks:
+
+```cs
+bool SetServerTp(string name, Vector3 location) or AddServerTp(string name, Vector3 location);
+```
+
+    Adds a server target using name and location.
+
+
+```cs
+bool UnsetServerTp(string name) or RemoveServerTp(name);
+```
+
+    Removes a server target by name other than bandit, outpost, and town.
+
+
+```cs
+bool GetServerTp(string name = "");
+```
+
+    Gets either the Vector3 location of a named server target or, if name is not specified, a Dictionary<string, Vector3> object of all server targets, or null if nothing is found by name or at all.
+
+
+```cs
+bool ResetServerTp();
+```
+
+    Resets/removes all server targets other than bandit, outpost, and town.
+
 
 ### Status
 

@@ -43,7 +43,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.3.0")]
+    [Info("Teleportication", "RFC1920", "1.3.1")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -1131,6 +1131,78 @@ namespace Oxide.Plugins
                     Message(src, "tpanotify", iplayer.Name, configData.Types["TPR"].CountDown.ToString());
                 }
             }
+        }
+        #endregion
+
+        #region InboundHooks
+        private bool AddServerTp(string name, Vector3 location) => SetServerTp(name, location);
+
+        private bool SetServerTp(string name, Vector3 location)
+        {
+            List<string> reserved = new List<string>() { "bandit", "outpost", "town" };
+            if (reserved.Contains(name)) return false;
+
+            List<string> target = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='{name}'");
+            if (target == null) return false;
+
+            RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('{name}', '{location.ToString()}')");
+            return true;
+        }
+
+        private bool RemoveServerTp(string name) => UnsetServerTp(name);
+
+        private bool UnsetServerTp(string name)
+        {
+            List<string> reserved = new List<string>() { "bandit", "outpost", "town" };
+            if (reserved.Contains(name)) return false;
+
+            List<string> target = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='{name}')");
+            if (target == null || target.Count == 0) return false;
+
+            RunUpdateQuery($"DELETE FROM rtp_server WHERE name='{name}'");
+            return true;
+        }
+
+        private object GetServerTp(string name = "")
+        {
+            if (name.Length > 0)
+            {
+                List<string> target = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='{name}'");
+                if (target == null || target.Count == 0) return false;
+
+                Vector3 pos = StringToVector3(target[0]);
+                if (pos != default(Vector3) && pos != Vector3.zero) return pos;
+            }
+
+            Dictionary<string, Vector3> targets = new Dictionary<string, Vector3>();
+
+            using (SQLiteConnection c = new SQLiteConnection(connStr))
+            {
+                c.Open();
+                const string qh = "SELECT name, location, FROM rtp_server";
+                using (SQLiteCommand q = new SQLiteCommand(qh, c))
+                using (SQLiteDataReader tgts = q.ExecuteReader())
+                {
+                    while (tgts.Read())
+                    {
+                        string nom = tgts.GetValue(0).ToString();
+                        string loc = tgts.GetValue(1).ToString();
+                        targets.Add(name, StringToVector3(loc));
+                    }
+                }
+            }
+
+            if (targets == null || targets.Count == 0) return null;
+            return targets;
+        }
+
+        private bool ResetServerTp()
+        {
+            List<string> target = (List<string>)RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name NOT IN ('town', 'outpost', 'bandit')");
+            if (target == null || target.Count == 0) return false;
+
+            RunUpdateQuery("DELETE FROM rtp_server WHERE name NOT IN ('town', 'outpost', 'bandit')");
+            return true;
         }
         #endregion
 
