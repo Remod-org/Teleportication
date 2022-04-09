@@ -43,7 +43,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.3.1")]
+    [Info("Teleportication", "RFC1920", "1.3.2")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -1217,7 +1217,7 @@ namespace Oxide.Plugins
                 }
             }
             TPRRequests.Add(sourceId, targetId);
-//            if (TPRTimers.ContainsKey(sourceId)) TPRTimers.Remove(sourceId);
+            if (TPRTimers.ContainsKey(sourceId)) TPRTimers.Remove(sourceId);
             TPRTimers.Add(sourceId, new TPRTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown });
             HandleTimer(sourceId, "TPR", true);
             NextTick(() => TPRNotification());
