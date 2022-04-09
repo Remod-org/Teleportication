@@ -43,7 +43,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.3.1")]
+    [Info("Teleportication", "RFC1920", "1.3.0")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
