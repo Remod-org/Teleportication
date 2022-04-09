@@ -43,7 +43,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.2.9")]
+    [Info("Teleportication", "RFC1920", "1.3.0")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -553,7 +553,7 @@ namespace Oxide.Plugins
         [Command("sethome")]
         private void CmdSetHome(IPlayer iplayer, string command, string[] args)
         {
-            if (args.Length == 1) CmdHomeTeleport(iplayer, "home", new string[] { "set", args[0] });
+            if (args.Length == 1) CmdHomeTeleport(iplayer, "home", new string[] { configData.Options.SetCommand, args[0] });
         }
 
         [Command("home")]
@@ -1145,6 +1145,7 @@ namespace Oxide.Plugins
                 }
             }
             TPRRequests.Add(sourceId, targetId);
+//            if (TPRTimers.ContainsKey(sourceId)) TPRTimers.Remove(sourceId);
             TPRTimers.Add(sourceId, new TPRTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown });
             HandleTimer(sourceId, "TPR", true);
             NextTick(() => TPRNotification());
