@@ -43,7 +43,7 @@ using UnityEngine;
 // Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.3.2")]
+    [Info("Teleportication", "RFC1920", "1.3.3")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -128,7 +128,7 @@ namespace Oxide.Plugins
             if (configData.Options.AddTownMapMarker)
             {
                 List<string> target = (List<string>)RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name='town'");
-                if (target[0] != null)
+                if (target != null)
                 {
                     foreach (MapMarkerGenericRadius mm in UnityEngine.Object.FindObjectsOfType<MapMarkerGenericRadius>().Where(x => x.name == "town").ToList())
                     {
@@ -261,8 +261,10 @@ namespace Oxide.Plugins
                 ["tpr"] = "another player",
                 ["town"] = "Town",
                 ["outpost"] = "Outpost",
+                ["outpostset"] = "Outpost location has been set to {0}",
                 ["tunnels"] = "Available Tunnel Entrances:\n{0}",
                 ["bandit"] = "Bandit",
+                ["banditset"] = "Bandit Town location has been set to {0}",
                 ["cooldown"] = "Currently in cooldown for {0} for another {1} seconds.",
                 ["limit"] = "You have hit the daily limit for {0}: ({1} of {2})",
                 ["reqdenied"] = "Request to teleport to {0} was denied!",
@@ -1209,14 +1211,16 @@ namespace Oxide.Plugins
         #region main
         private void TPRSetup(ulong sourceId, ulong targetId)
         {
-            if (TPRRequests.ContainsValue(targetId))
-            {
-                foreach (KeyValuePair<ulong, ulong> item in TPRRequests.Where(kvp => kvp.Value == targetId).ToList())
-                {
-                    TPRRequests.Remove(item.Key);
-                }
-            }
+            //if (TPRRequests.ContainsValue(targetId))
+            //{
+            //    foreach (KeyValuePair<ulong, ulong> item in TPRRequests.Where(kvp => kvp.Value == targetId).ToList())
+            //    {
+            //        TPRRequests.Remove(item.Key);
+            //    }
+            //}
+            if (TPRRequests.ContainsKey(sourceId)) TPRRequests.Remove(sourceId);
             TPRRequests.Add(sourceId, targetId);
+
             if (TPRTimers.ContainsKey(sourceId)) TPRTimers.Remove(sourceId);
             TPRTimers.Add(sourceId, new TPRTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown });
             HandleTimer(sourceId, "TPR", true);
