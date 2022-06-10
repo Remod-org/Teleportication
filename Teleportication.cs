@@ -39,11 +39,9 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEngine;
 
-// TODO:
-// Economics for bypass
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.3.3")]
+    [Info("Teleportication", "RFC1920", "1.3.4")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -97,6 +95,7 @@ namespace Oxide.Plugins
             public BasePlayer source;
             public string targetName;
             public Vector3 targetLocation;
+            public float counter; // Request count while in cooldown to determine bypass go/no-go
         }
 
         public class TPRTimer
@@ -266,6 +265,8 @@ namespace Oxide.Plugins
                 ["bandit"] = "Bandit",
                 ["banditset"] = "Bandit Town location has been set to {0}",
                 ["cooldown"] = "Currently in cooldown for {0} for another {1} seconds.",
+                ["rcooldown"] = "Currently in cooldown for {0} for another {1} seconds.  Run again to pay for bypass.",
+                ["bypassed"] = "Cooldown  for {0} bypassed by paying {1}",
                 ["limit"] = "You have hit the daily limit for {0}: ({1} of {2})",
                 ["reqdenied"] = "Request to teleport to {0} was denied!",
                 ["reqaccepted"] = "Request to teleport to {0} was accepted!",
@@ -1268,10 +1269,23 @@ namespace Oxide.Plugins
 
             // COOLDOWN
             float cooldown = 0;
-            if (CheckCooldown(player.userID, type, out cooldown))
+            double bypass = 0;
+            if (CheckCooldown(player.userID, type, out cooldown, out bypass))
             {
-                Message(player.IPlayer, "cooldown", type.ToLower(), cooldown);
-                return false;
+                if (bypass > 0)
+                {
+                    Message(player.IPlayer, "bypassed", type.ToLower(), bypass.ToString());
+                }
+                else if (configData.Options.useEconomics || configData.Options.useServerRewards)
+                {
+                    Message(player.IPlayer, "rcooldown", type.ToLower(), cooldown);
+                    return false;
+                }
+                else
+                {
+                    Message(player.IPlayer, "cooldown", type.ToLower(), cooldown);
+                    return false;
+                }
             }
 
             // HOSTILE
@@ -2224,14 +2238,33 @@ namespace Oxide.Plugins
             );
         }
 
-        public bool CheckCooldown(ulong userid, string type, out float cooldown)
+        public bool CheckCooldown(ulong userid, string type, out float cooldown, out double bypass)
         {
             cooldown = 0;
+            bypass = 0;
             if (CooldownTimers[type].ContainsKey(userid))
             {
                 cooldown = (float)Math.Floor((CooldownTimers[type][userid].start + CooldownTimers[type][userid].cooldown) - Time.realtimeSinceStartup);
                 DoLog($"Found a {type} cooldown timer for {userid.ToString()} with {cooldown.ToString()} second(s) remaining");
-                return true;
+                DoLog($"Player has made {CooldownTimers[type][userid].counter.ToString()} previous requests.");
+
+                if (CooldownTimers[type][userid].counter > 0)
+                {
+                    // This is a secondary request, so we will deduct the bypass amount from their account and destroy the countdown timer.
+                    if (configData.Types[type].AllowBypass && configData.Types[type].BypassAmount > 0 && (configData.Options.useEconomics || configData.Options.useServerRewards) && HandleMoney(userid, configData.Types[type].BypassAmount, true))
+                    {
+                        bypass = configData.Types[type].BypassAmount;
+                        CooldownTimers[type][userid].timer.Destroy();
+                        CooldownTimers[type].Remove(userid);
+                        return true;
+                    }
+                }
+                else if (configData.Types[type].AllowBypass && configData.Types[type].BypassAmount > 0 && (configData.Options.useEconomics || configData.Options.useServerRewards) && HandleMoney(userid, configData.Types[type].BypassAmount, false))
+                {
+                    // If a check of their accounts shows money present, tick the counter so that if they repeat the command they will pay and be teleported.
+                    CooldownTimers[type][userid].counter++;
+                    return true;
+                }
             }
             return false;
         }
@@ -2306,11 +2339,12 @@ namespace Oxide.Plugins
             return limit;
         }
 
-        private bool HandleMoney(string userid, double bypass, bool withdraw = false, bool deposit = false)
+        private bool HandleMoney(ulong userID, double bypass, bool withdraw = false, bool deposit = false)
         {
             double balance = 0;
             bool hasmoney = false;
 
+            string userid = userID.ToString();
             // Check Economics first.  If not in use or balance low, check ServerRewards below
             if (configData.Options.useEconomics && Economics)
             {

@@ -1,7 +1,7 @@
 ## Teleportication
 Nextgen Teleport plugin for Rust
 
-Uses Friends, Clans, Rust teams
+Uses Friends, Clans, Rust teams, Economics, ServerRewards, GridAPI, NoEscape, Vanish, CopyPaste, ZoneManager, LootProtect
 
 A lot of the familiar commands from older teleport plugins are still there, with some exceptions.  This is where the similarites end.
 
@@ -53,6 +53,8 @@ Note that "set" can be changed by config, e.g. for /home set, /town set...
     "logtofile": false,
     "useClans": false,
     "useFriends": false,
+    "useEconoics": false,
+    "useServerRewards": false,
     "useTeams": false,
     "HomeRequireFoundation": true,
     "HomeMinimumDistance": 10f,
@@ -115,6 +117,8 @@ Note that "set" can be changed by config, e.g. for /home set, /town set...
 #### Global Options
     - `useClans` -- Use various Clans plugins for determining relationships
     - `useFriends` -- Use various Friends plugins for determining relationships
+    - `useEconomics` -- Use the Economics plugin to allow for player bypass of cooldowns.
+    - `useServerRewards` -- Use the ServerRewards plugin to allow for player bypass of cooldowns.
     - `useTeams` -- Use Rust native teams for determining relationships
     - `HomeRequireFoundation` -- Require a foundation to set or use a home
     - `StrictFoundationCheck` -- Require centering on a foundation block to set a home
@@ -193,6 +197,12 @@ Teleportication uses SQLite for home, town, bandit, and outpost storage.  The fi
 
 In-memory objects keep track of previous location for tpb, pending tpr/tpa, etc.  This could change as development progresses.
 
+#### Bypassing cooldown
+
+In its current form, the player will be notified that they are in cooldown and that they can simply repeat the command to pay from their accounts for bypassing the cooldown.  It does not display the amount.
+
+If, while still in cooldown, they repeat the command, they will be notified of the amount they have paid and will be teleported after the countdown as usual.
+
 ### For Developers
     The following can be used for example as follows:
 
@@ -235,9 +245,4 @@ bool ResetServerTp();
 ```
 
     Resets/removes all server targets other than bandit, outpost, and town.
-
-
-### Status
-
-  1. Economics is a pending feature (for bypassing CoolDown, etc.)
 
