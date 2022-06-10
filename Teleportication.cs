@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.3.4")]
+    [Info("Teleportication", "RFC1920", "1.3.5")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -266,6 +266,7 @@ namespace Oxide.Plugins
                 ["banditset"] = "Bandit Town location has been set to {0}",
                 ["cooldown"] = "Currently in cooldown for {0} for another {1} seconds.",
                 ["rcooldown"] = "Currently in cooldown for {0} for another {1} seconds.  Run again to pay for bypass.",
+                ["rcooldown2"] = "Currently in cooldown for {0} for another {1} seconds.  Run again to pay {2} for bypass.",
                 ["bypassed"] = "Cooldown  for {0} bypassed by paying {1}",
                 ["limit"] = "You have hit the daily limit for {0}: ({1} of {2})",
                 ["reqdenied"] = "Request to teleport to {0} was denied!",
@@ -1278,7 +1279,7 @@ namespace Oxide.Plugins
                 }
                 else if (configData.Options.useEconomics || configData.Options.useServerRewards)
                 {
-                    Message(player.IPlayer, "rcooldown", type.ToLower(), cooldown);
+                    Message(player.IPlayer, "rcooldown2", type.ToLower(), cooldown, configData.Types[type].BypassAmount.ToString());
                     return false;
                 }
                 else
