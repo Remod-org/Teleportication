@@ -199,7 +199,7 @@ In-memory objects keep track of previous location for tpb, pending tpr/tpa, etc.
 
 #### Bypassing cooldown
 
-In its current form, the player will be notified that they are in cooldown and that they can simply repeat the command to pay from their accounts for bypassing the cooldown.  It does not display the amount.
+In its current form, the player will be notified that they are in cooldown and that they can simply repeat the command to pay from their accounts for bypassing the cooldown.
 
 If, while still in cooldown, they repeat the command, they will be notified of the amount they have paid and will be teleported after the countdown as usual.
 
