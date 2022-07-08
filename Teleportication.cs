@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.3.5")]
+    [Info("Teleportication", "RFC1920", "1.3.6")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -115,11 +115,31 @@ namespace Oxide.Plugins
         #region init
         private void OnServerInitialized()
         {
+            sqlConnection = new SQLiteConnection(connStr);
+            sqlConnection.Open();
+
+            LoadData();
+            LoadConfigVariables();
+
+            // Setup permissions from VIPSettings
+            foreach (KeyValuePair<string, CmdOptions> ttype in configData.Types)
+            {
+                if (ttype.Value.VIPSettings == null) continue;
+                if (ttype.Value.VIPSettings.Count > 0)
+                {
+                    foreach (KeyValuePair<string, VIPSetting> x in ttype.Value.VIPSettings)
+                    {
+                        if (!permission.PermissionExists(x.Key,this)) permission.RegisterPermission(x.Key, this);
+                    }
+                }
+            }
+
             if (configData.Options.WipeOnNewSave && newsave)
             {
                 newsave = false;
                 // Wipe homes and town, etc.
                 CreateOrClearTables(true);
+                //AutoSpawnTown();
             }
 
             FindMonuments();
@@ -157,10 +177,7 @@ namespace Oxide.Plugins
             DynamicConfigFile dataFile = Interface.Oxide.DataFileSystem.GetDatafile(Name + "/teleportication");
             dataFile.Save();
             connStr = $"Data Source={Interface.Oxide.DataDirectory}{Path.DirectorySeparatorChar}{Name}{Path.DirectorySeparatorChar}teleportication.db";
-            sqlConnection = new SQLiteConnection(connStr);
-            sqlConnection.Open();
 
-            LoadConfigVariables();
             CooldownTimers.Add("Home", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("Town", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("TPA", new Dictionary<ulong, TPTimer>());
@@ -180,8 +197,6 @@ namespace Oxide.Plugins
             DailyUsage.Add("Bandit", new Dictionary<ulong, float>());
             DailyUsage.Add("Outpost", new Dictionary<ulong, float>());
             DailyUsage.Add("Tunnel", new Dictionary<ulong, float>());
-
-            LoadData();
 
             AddCovalenceCommand("home", "CmdHomeTeleport");
             AddCovalenceCommand("homeg", "CmdHomeGUI");
@@ -206,19 +221,6 @@ namespace Oxide.Plugins
             permission.RegisterPermission(permTP_Outpost, this);
             permission.RegisterPermission(permTP_Tunnel, this);
             permission.RegisterPermission(permTP_Admin, this);
-
-            // Setup permissions from VIPSettings
-            foreach (KeyValuePair<string, CmdOptions> ttype in configData.Types)
-            {
-                if (ttype.Value.VIPSettings == null) continue;
-                if (ttype.Value.VIPSettings.Count > 0)
-                {
-                    foreach (KeyValuePair<string, VIPSetting> x in ttype.Value.VIPSettings)
-                    {
-                        if (!permission.PermissionExists(x.Key,this)) permission.RegisterPermission(x.Key, this);
-                    }
-                }
-            }
         }
 
         private void Unload()
@@ -484,6 +486,7 @@ namespace Oxide.Plugins
                     case "wipe":
                         Message(iplayer, "Wiping data!");
                         CreateOrClearTables(true);
+                        //AutoSpawnTown();
                         FindMonuments();
                         break;
                     case "info":
@@ -1790,14 +1793,14 @@ namespace Oxide.Plugins
         //        if (townPositions.Count > 0)
         //        {
         //            int pos = UnityEngine.Random.Range(0, townPositions.Count);
-        //            Puts($"Trying to paste {configData.Options.TownCopyPasteString} as new town at {townPositions[pos].ToString()} with zoneid {configData.Options.TownZoneId.ToString()}");
+        //            Puts($"Trying to paste {configData.Options.TownCopyPasteString} as new town at {townPositions[pos].ToString()} with zoneid {configData.Options.TownZoneId}");
         //            //CopyPaste.Call("TryPaste", townPositions[pos], configData.Options.TownCopyPasteString, null, 0f, new string[] { "autoheight", "true", "stability", "true", "deployables", "true", "inventories", "true", "entityowner", "true" });
         //            CopyPaste.Call("TryPasteFromVector3", townPositions[pos], 0f, configData.Options.TownCopyPasteString, new string[] { "autoheight", "true", "stability", "true", "deployables", "true", "inventories", "true", "entityowner", "true" }, null);
 
         //            RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('town', '{townPositions[pos].ToString()}')");
 
         //            string[] args = { "name", "Town", "radius", "150" };
-        //            ZoneManager?.Call("CreateOrUpdateZone", configData.Options.TownZoneId.ToString(), args, townPositions[pos]);
+        //            ZoneManager?.Call("CreateOrUpdateZone", configData.Options.TownZoneId, args, townPositions[pos]);
 
         //            if (configData.Options.AddTownMapMarker)
         //            {
@@ -1889,9 +1892,20 @@ namespace Oxide.Plugins
             }
 
             RaycastHit hitinfo;
-            if (!Physics.Raycast(pos, Vector3.down, out hitinfo, 5f, LayerMask.GetMask("Terrain")))
+            bool x = Physics.Raycast(pos, Vector3.down, out hitinfo, 5f, LayerMask.GetMask("Terrain"));
+            if (!x)
             {
                 Puts("Not above terrain :(");
+                return false;
+            }
+            else if (hitinfo.collider.name.IndexOf("road", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                Puts("Above road :(");
+                return false;
+            }
+            else if (hitinfo.collider.name.IndexOf("water", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                Puts("Above water :(");
                 return false;
             }
 
