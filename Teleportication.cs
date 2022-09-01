@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.3.6")]
+    [Info("Teleportication", "RFC1920", "1.3.7")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -2010,15 +2010,25 @@ namespace Oxide.Plugins
                 else if (monument.name.Contains("compound") && configData.Options.AutoGenOutpost)
                 {
                     DoLog("  Adding Outpost target");
+                    Vector3 mt = Vector3.zero;
+                    Vector3 bbq = Vector3.zero;
                     List<BaseEntity> ents = new List<BaseEntity>();
                     Vis.Entities(monument.transform.position, 50, ents);
                     foreach (BaseEntity entity in ents)
                     {
-                        if (entity.PrefabName.Contains("piano"))
+                        if (entity.PrefabName.Contains("marketterminal") && mt == Vector3.zero)
                         {
-                            Vector3 outpost = entity.transform.position + new Vector3(1f, 0.1f, 1f);
-                            RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('outpost', '{outpost.ToString()}')");
+                            mt = entity.transform.position;
                         }
+                        else if (entity.PrefabName.Contains("bbq"))
+                        {
+                            bbq = entity.transform.position;
+                        }
+                    }
+                    if (mt != Vector3.zero && bbq != Vector3.zero)
+                    {
+                        Vector3 outpost = Vector3.Lerp(mt, bbq, 0.3f) + new Vector3(1f, 0.1f, 1f);
+                        RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('outpost', '{outpost.ToString()}')");
                     }
                 }
                 else if (monument.name.Contains("bandit") && configData.Options.AutoGenBandit)
