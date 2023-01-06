@@ -1,12 +1,12 @@
-#region License (GPL v3)
+#region License (GPL v2)
 /*
     Teleportication - NextGen Teleportation Plugin
-    Copyright (c) 2020-2021 RFC1920 <desolationoutpostpve@gmail.com>
+    Copyright (c) 2020-2023 RFC1920 <desolationoutpostpve@gmail.com>
 
     This program is free software; you can redistribute it and/or
     modify it under the terms of the GNU General Public License
-    as published by the Free Software Foundation; either version 2
-    of the License, or (at your option) any later version.
+    as published by the Free Software Foundation; version 2
+    of the License only.
 
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -19,7 +19,7 @@
 
     Optionally you can also view the license at <http://www.gnu.org/licenses/>.
 */
-#endregion License (GPL v3)
+#endregion License (GPL v2)
 using Facepunch;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.3.7")]
+    [Info("Teleportication", "RFC1920", "1.3.8")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -832,7 +832,7 @@ namespace Oxide.Plugins
             if (args.Length > 0 && args[0] == configData.Options.SetCommand)
             {
                 if (!iplayer.HasPermission(permTP_Admin)) { Message(iplayer, "notauthorized"); return; }
-                RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('{command}', '{player.transform.position.ToString()}')");
+                RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('{command}', '{player.transform.position}')");
                 switch (command)
                 {
                     case "town":
@@ -888,6 +888,7 @@ namespace Oxide.Plugins
                                 }
                             }
                         }
+                        Interface.CallHook("OnTownSet", player.transform.position);
                         break;
                     case "bandit":
                         Message(iplayer, "banditset", player.transform.position.ToString());
