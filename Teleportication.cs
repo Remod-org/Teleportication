@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.3.8")]
+    [Info("Teleportication", "RFC1920", "1.3.9")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -151,7 +151,7 @@ namespace Oxide.Plugins
                 {
                     foreach (MapMarkerGenericRadius mm in UnityEngine.Object.FindObjectsOfType<MapMarkerGenericRadius>().Where(x => x.name == "town").ToList())
                     {
-                        mm.Kill();
+                        mm?.Kill();
                     }
 
                     Vector3 townPos = StringToVector3(target[0]);
@@ -841,7 +841,7 @@ namespace Oxide.Plugins
                         {
                             foreach (MapMarkerGenericRadius mm in UnityEngine.Object.FindObjectsOfType<MapMarkerGenericRadius>().Where(x => x.name == "town").ToList())
                             {
-                                mm.Kill();
+                                mm?.Kill();
                             }
                             MapMarkerGenericRadius marker = GameManager.server.CreateEntity("assets/prefabs/tools/map/genericradiusmarker.prefab", player.transform.position) as MapMarkerGenericRadius;
                             if (marker != null)
@@ -1606,7 +1606,7 @@ namespace Oxide.Plugins
             Vis.Entities(player.transform.position, 50, ents);
             foreach (BaseEntity entity in ents)
             {
-                if (entity.name.Contains("tunnel")) return true;
+                if (entity.ShortPrefabName.IndexOf("tunnel", StringComparison.OrdinalIgnoreCase) > 0) return true;
             }
 
             return false;
@@ -1615,7 +1615,7 @@ namespace Oxide.Plugins
         public bool AboveWater(BasePlayer player)
         {
             Vector3 pos = player.transform.position;
-            DoLog($"Player position: {pos.ToString()}.  Checking for water...");
+            DoLog($"Player position: {pos}.  Checking for water...");
 
             if ((TerrainMeta.HeightMap.GetHeight(pos) - TerrainMeta.WaterMap.GetHeight(pos)) >= 0)
             {
