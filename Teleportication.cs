@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.3.9")]
+    [Info("Teleportication", "RFC1920", "1.4.0")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -312,10 +312,7 @@ namespace Oxide.Plugins
             }, this);
         }
 
-        private void OnNewSave()
-        {
-            newsave = true;
-        }
+        private void OnNewSave() => newsave = true;
 
         private void LoadData()
         {
@@ -346,8 +343,8 @@ namespace Oxide.Plugins
                 if (input.Length > 1)
                 {
                     ulong userid = ulong.Parse(iplayer.Id);
-                    string parsed = null;
                     Vector3 pos = new Vector3();
+                    string parsed;
                     if (input.Length == 3)
                     {
                         parsed = input[0] + "," + input[1] + "," + input[2];
@@ -681,11 +678,11 @@ namespace Oxide.Plugins
                     }
                     if (found)
                     {
-                        RunUpdateQuery($"UPDATE rtp_player SET location='{player.transform.position.ToString()}' WHERE userid='{player.userID}' AND name='{home}'");
+                        RunUpdateQuery($"UPDATE rtp_player SET location='{player.transform.position}' WHERE userid='{player.userID}' AND name='{home}'");
                     }
                     else
                     {
-                        RunUpdateQuery($"INSERT INTO rtp_player VALUES('{player.userID}', '{home}', '{player.transform.position.ToString()}', '{Time.realtimeSinceStartup}', 0)");
+                        RunUpdateQuery($"INSERT INTO rtp_player VALUES('{player.userID}', '{home}', '{player.transform.position}', '{Time.realtimeSinceStartup}', 0)");
                     }
                     Message(iplayer, "homeset", home);
                 }
@@ -1072,12 +1069,13 @@ namespace Oxide.Plugins
             if (configData.Options.debug) { string debug = string.Join(",", args); Puts($"{debug}"); }
 
             if (!iplayer.HasPermission(permTP_TPR)) { Message(iplayer, "notauthorized"); return; }
+
             if (args.Length == 1)
             {
                 BasePlayer target = FindPlayerByName(args[0]);
                 if (target != null)
                 {
-                    ulong sourceId = Convert.ToUInt64(iplayer.Id);
+                    ulong sourceId = ulong.Parse(iplayer.Id);
                     ulong targetId = target.userID;
                     if (sourceId == targetId)
                     {
@@ -1115,16 +1113,16 @@ namespace Oxide.Plugins
         {
             if (iplayer.Id == "server_console") return;
             DoLog($"Checking for tpr request for {iplayer.Id}");
-            if (TPRRequests.ContainsValue(Convert.ToUInt64(iplayer.Id)))
+            if (TPRRequests.ContainsValue(ulong.Parse(iplayer.Id)))
             {
-                ulong sourceId = TPRRequests.FirstOrDefault(x => x.Value == Convert.ToUInt64(iplayer.Id)).Key;
-                DoLog($"Found a request from {sourceId.ToString()}");
-                IPlayer src = covalence.Players.FindPlayerById(sourceId.ToString());
-                if (src != null)
+                ulong sourceId = TPRRequests.FirstOrDefault(x => x.Value == ulong.Parse(iplayer.Id)).Key;
+                DoLog($"Found a request from {sourceId}");
+                BasePlayer srcpl = FindPlayerById(sourceId);
+
+                if (srcpl != null)
                 {
-                    DoLog($"Setting timer for {src.Name} to tp to {iplayer.Name}");
+                    DoLog($"Setting timer for {srcpl.displayName} to tp to {iplayer.Name}");
                     if (TeleportTimers.ContainsKey(sourceId)) TeleportTimers.Remove(sourceId);
-                    BasePlayer srcpl = src.Object as BasePlayer;
                     BasePlayer pl = iplayer.Object as BasePlayer;
                     TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, cooldown = configData.Types["TPR"].CountDown, source = srcpl, targetName = iplayer.Name, targetLocation = pl.transform.position });
                     HandleTimer(sourceId, "TPR", true);
@@ -1136,8 +1134,10 @@ namespace Oxide.Plugins
                         Message(iplayer, "remaining", usage.ToString(), "TPR");
                     }
 
-                    Message(src, "tpanotify", iplayer.Name, configData.Types["TPR"].CountDown.ToString());
+                    Message(srcpl.IPlayer, "tpanotify", iplayer.Name, configData.Types["TPR"].CountDown.ToString());
+                    return;
                 }
+                TPRRequests.Remove(srcpl.userID);
             }
         }
         #endregion
@@ -1153,7 +1153,7 @@ namespace Oxide.Plugins
             List<string> target = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='{name}'");
             if (target == null) return false;
 
-            RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('{name}', '{location.ToString()}')");
+            RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('{name}', '{location}')");
             return true;
         }
 
@@ -1225,12 +1225,17 @@ namespace Oxide.Plugins
             //    }
             //}
             if (TPRRequests.ContainsKey(sourceId)) TPRRequests.Remove(sourceId);
-            TPRRequests.Add(sourceId, targetId);
 
-            if (TPRTimers.ContainsKey(sourceId)) TPRTimers.Remove(sourceId);
-            TPRTimers.Add(sourceId, new TPRTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown });
-            HandleTimer(sourceId, "TPR", true);
-            NextTick(() => TPRNotification());
+            BasePlayer source = FindPlayerById(sourceId);
+            if (CanTeleport(source, source.transform.position.ToString(), "TPR"))
+            {
+                TPRRequests.Add(sourceId, targetId);
+
+                if (TPRTimers.ContainsKey(sourceId)) TPRTimers.Remove(sourceId);
+                TPRTimers.Add(sourceId, new TPRTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown });
+                HandleTimer(sourceId, "TPR", true);
+                NextTick(() => TPRNotification());
+            }
         }
 
         private void TPRNotification(bool reject = false)
@@ -1265,7 +1270,7 @@ namespace Oxide.Plugins
 
             // LIMIT
             DoLog($"Checking daily usage vs. limit for {player.displayName} for {type}");
-            float limit = 0;
+            float limit;
             if (AtLimit(player.userID, type, out limit))
             {
                 Message(player.IPlayer, "limit", type.ToLower(), DailyUsage[type][player.userID].ToString(), limit.ToString());
@@ -1273,8 +1278,8 @@ namespace Oxide.Plugins
             }
 
             // COOLDOWN
-            float cooldown = 0;
-            double bypass = 0;
+            float cooldown;
+            double bypass;
             if (CheckCooldown(player.userID, type, out cooldown, out bypass))
             {
                 if (bypass > 0)
@@ -1294,8 +1299,7 @@ namespace Oxide.Plugins
             }
 
             // HOSTILE
-            BaseCombatEntity pbce = player as BaseCombatEntity;
-            if (pbce.IsHostile() && configData.Types[type].BlockOnHostile)
+            if (player.IsHostile() && configData.Types[type].BlockOnHostile)
             {
                 float unHostileTime = (float)player.State.unHostileTimestamp;
                 float currentTime = (float)Network.TimeEx.currentTimestamp;
@@ -1305,6 +1309,7 @@ namespace Oxide.Plugins
                 return false;
             }
 
+            // PROXIMITY
             string monName = NearMonument(player);
             if (monName != null)
             {
@@ -1366,6 +1371,8 @@ namespace Oxide.Plugins
                 Message(player.IPlayer, "onwater", type.ToLower());
                 return false;
             }
+
+            // CONDITION
             if (player.IsSwimming() && configData.Types[type].BlockOnSwimming)
             {
                 Message(player.IPlayer, "onswimming", type.ToLower());
@@ -1392,6 +1399,7 @@ namespace Oxide.Plugins
                 return false;
             }
 
+            // EXTERNAL CHECKS
             if (configData.Types[type].BlockForNoEscape && configData.Options.useNoEscape && NoEscape != null)
             {
                 bool isblocked = (bool)NoEscape?.Call("IsBlocked", player);
@@ -1438,7 +1446,7 @@ namespace Oxide.Plugins
                         }
                     }
                 }
-                DoLog($"Homelimit for {player.displayName}, set to {homelimit.ToString()}{isvip}.");
+                DoLog($"Homelimit for {player.displayName}, set to {homelimit}{isvip}.");
 
                 if (homelimit > 0 && checkhome.Count >= homelimit)
                 {
@@ -1457,7 +1465,7 @@ namespace Oxide.Plugins
             }
             if (configData.Options.HomeRequireFoundation)
             {
-                DoLog($"Checking for foundation/floor at target {position.ToString()}");
+                DoLog($"Checking for foundation/floor at target {position}");
                 RaycastHit hitinfo;
                 if (Physics.Raycast(position, Vector3.down, out hitinfo, 0.2f, blockLayer))
                 {
@@ -1498,17 +1506,17 @@ namespace Oxide.Plugins
                 {
                     if (wall.name.Contains("external.high"))
                     {
-                        DoLog($"    Found: {wall.name} @ center {center.ToString()}, pos {position.ToString()}");
+                        DoLog($"    Found: {wall.name} @ center {center}, pos {position}");
                         reason = Lang("highwall");
                         return false;
                     }
                 }
-                DoLog($"  Checking block: {entity.name} @ center {center.ToString()}, pos: {position.ToString()}");
+                DoLog($"  Checking block: {entity.name} @ center {center}, pos: {position}");
                 if (entity.PrefabName.Contains("triangle.prefab"))
                 {
                     if (Math.Abs(center.x - position.x) < 0.46f && Math.Abs(center.z - position.z) < 0.46f)
                     {
-                        DoLog($"    Found: {entity.ShortPrefabName} @ center: {center.ToString()}, pos: {position.ToString()}");
+                        DoLog($"    Found: {entity.ShortPrefabName} @ center: {center}, pos: {position}");
                         if (checktc && !CheckCupboardBlock(entity as BuildingBlock, player))
                         {
                             reason = Lang("notowned");
@@ -1522,7 +1530,7 @@ namespace Oxide.Plugins
                 {
                     if (Math.Abs(center.x - position.x) < 0.7f && Math.Abs(center.z - position.z) < 0.7f)
                     {
-                        DoLog($"    Found: {entity.ShortPrefabName} @ center: {center.ToString()}, pos: {position.ToString()}");
+                        DoLog($"    Found: {entity.ShortPrefabName} @ center: {center}, pos: {position}");
                         if (checktc && !CheckCupboardBlock(entity as BuildingBlock, player))
                         {
                             reason = Lang("notowned");
@@ -1641,7 +1649,7 @@ namespace Oxide.Plugins
                 monvector.y = pos.y;
                 float dist = Vector3.Distance(pos, monvector);
 
-                DoLog($"Checking {monname} dist: {dist.ToString()}, realDistance: {realDistance.ToString()}");
+                DoLog($"Checking {monname} dist: {dist}, realDistance: {realDistance}");
                 if (dist < realDistance)
                 {
                     DoLog($"Player in range of {monname}");
@@ -1697,20 +1705,30 @@ namespace Oxide.Plugins
         {
             return Regex.Replace(str, "[^a-zA-Z0-9_.]+", "", RegexOptions.Compiled);
         }
-
         private static BasePlayer FindPlayerByName(string name)
         {
-            BasePlayer result = null;
             foreach (BasePlayer current in BasePlayer.activePlayerList)
             {
                 if (current.displayName.Equals(name, StringComparison.OrdinalIgnoreCase)
                     || current.UserIDString.Contains(name, CompareOptions.OrdinalIgnoreCase)
                     || current.displayName.Contains(name, CompareOptions.OrdinalIgnoreCase))
                 {
-                    result = current;
+                    return current;
                 }
             }
-            return result;
+            return null;
+        }
+
+        private static BasePlayer FindPlayerById(ulong userid)
+        {
+            foreach (BasePlayer current in BasePlayer.activePlayerList)
+            {
+                if (current.userID == userid)
+                {
+                    return current;
+                }
+            }
+            return null;
         }
 
         private static bool GetBoolValue(string value)
@@ -1867,12 +1885,12 @@ namespace Oxide.Plugins
         public bool ValidTownPosition(ref Vector3 pos)
         {
             //Puts($"Checking position {pos.ToString()}, biome {GetBiome(pos).ToString()}, terrain {Enum.Parse(typeof(TerrainTopology), GetTopology(pos).ToString(), true)}");
-            Puts($"Checking position {pos.ToString()}");
+            Puts($"Checking position {pos}");
 
             float sl = GetSlope(pos);
             if (0 > sl || sl > 30)
             {
-                Puts($"Bad slope: {Math.Abs(sl).ToString()} degrees");
+                Puts($"Bad slope: {Math.Abs(sl)} degrees");
                 return false;
             }
             if (GetWater(pos) > 1)
@@ -1918,7 +1936,7 @@ namespace Oxide.Plugins
                 monvector.y = pos.y;
                 float dist = Vector3.Distance(pos, monvector);
 
-                DoLog($"Checking {monname} dist: {dist.ToString()}, realDistance: {realDistance.ToString()}");
+                DoLog($"Checking {monname} dist: {dist}, realDistance: {realDistance}");
                 if (dist < realDistance)
                 {
                     Puts($"Too close to {monname}");
@@ -2029,7 +2047,7 @@ namespace Oxide.Plugins
                     if (mt != Vector3.zero && bbq != Vector3.zero)
                     {
                         Vector3 outpost = Vector3.Lerp(mt, bbq, 0.3f) + new Vector3(1f, 0.1f, 1f);
-                        RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('outpost', '{outpost.ToString()}')");
+                        RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('outpost', '{outpost}')");
                     }
                 }
                 else if (monument.name.Contains("bandit") && configData.Options.AutoGenBandit)
@@ -2042,7 +2060,7 @@ namespace Oxide.Plugins
                         if (entity.PrefabName.Contains("workbench"))
                         {
                             Vector3 bandit = Vector3.Lerp(monument.transform.position, entity.transform.position, 0.45f) + new Vector3(0, 1.5f, 0);
-                            RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('bandit', '{bandit.ToString()}')");
+                            RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('bandit', '{bandit}')");
                         }
                     }
                 }
@@ -2062,7 +2080,7 @@ namespace Oxide.Plugins
                         string tname = name;
                         tname = tname.Replace("Entrance Bunker ", "Tunnel ");
                         //DoLog($"Adding {tname}, pos: {pos.ToString()}");
-                        RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('{tname}', '{pos.ToString()}')");
+                        RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('{tname}', '{pos}')");
                     }
                 }
             }
@@ -2215,7 +2233,7 @@ namespace Oxide.Plugins
                         }
                     }
 
-                    DoLog($"Creating a {type} countdown timer for {userid}.  Timer will be set to {countdown.ToString()} seconds{isvip}.");
+                    DoLog($"Creating a {type} countdown timer for {userid}.  Timer will be set to {countdown} seconds{isvip}.");
                     TeleportTimers[userid].start = Time.realtimeSinceStartup;
                     TeleportTimers[userid].cooldown = countdown;
                     TeleportTimers[userid].timer = timer.Once(TeleportTimers[userid].cooldown, () => Teleport(TeleportTimers[userid].source, TeleportTimers[userid].targetLocation, type));
@@ -2271,8 +2289,8 @@ namespace Oxide.Plugins
             if (CooldownTimers[type].ContainsKey(userid))
             {
                 cooldown = (float)Math.Floor((CooldownTimers[type][userid].start + CooldownTimers[type][userid].cooldown) - Time.realtimeSinceStartup);
-                DoLog($"Found a {type} cooldown timer for {userid.ToString()} with {cooldown.ToString()} second(s) remaining");
-                DoLog($"Player has made {CooldownTimers[type][userid].counter.ToString()} previous requests.");
+                DoLog($"Found a {type} cooldown timer for {userid} with {cooldown} second(s) remaining");
+                DoLog($"Player has made {CooldownTimers[type][userid].counter} previous requests.");
 
                 if (CooldownTimers[type][userid].counter > 0)
                 {
@@ -2313,7 +2331,7 @@ namespace Oxide.Plugins
                     }
                 }
 
-                DoLog($"Creating a {type} cooldown timer for {userid}.  Timer will be set to {cooldown.ToString()} seconds{isvip} including countdown.");
+                DoLog($"Creating a {type} cooldown timer for {userid}.  Timer will be set to {cooldown} seconds{isvip} including countdown.");
                 CooldownTimers[type][userid].start = Time.realtimeSinceStartup;
                 CooldownTimers[type][userid].cooldown = cooldown;
                 CooldownTimers[type][userid].timer = timer.Once(cooldown, () => HandleCooldown(userid, type, false, canbypass, bypassamount, dobypass, true));
@@ -2329,7 +2347,7 @@ namespace Oxide.Plugins
         // Check limit for any userid and type based on current activity
         public bool AtLimit(ulong userid, string type, out float limit)
         {
-            float current = 0;
+            float current;
             if (!DailyUsage[type].TryGetValue(userid, out current))
             {
                 DailyUsage[type].Add(userid, 0);
@@ -2367,7 +2385,7 @@ namespace Oxide.Plugins
 
         private bool HandleMoney(ulong userID, double bypass, bool withdraw = false, bool deposit = false)
         {
-            double balance = 0;
+            double balance;
             bool hasmoney = false;
 
             string userid = userID.ToString();
@@ -2735,9 +2753,8 @@ namespace Oxide.Plugins
             CuiHelper.DestroyUi(player, HGUI);
 
             CuiElementContainer container = UI.Container(HGUI, UI.Color("222222", 0.9f), "0.2 0.2", "0.8 0.8", true, "Overlay");
-
-            string append = null;
-            string label = null;
+            string append;
+            string label;
             switch (orderby)
             {
                 case "last":
