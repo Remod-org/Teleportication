@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.4.0")]
+    [Info("Teleportication", "RFC1920", "1.4.1")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -1549,6 +1549,7 @@ namespace Oxide.Plugins
                     reason = Lang("notowned");
                     return false;
                 }
+                return true;
             }
 
             return false;
@@ -1557,6 +1558,7 @@ namespace Oxide.Plugins
         // Check that a building block is owned by/attached to a cupboard and that the user has privileges
         private bool CheckCupboardBlock(BuildingBlock block, BasePlayer player)
         {
+            DoLog($"CheckCupboardBlock() called for {block.ShortPrefabName}");
             BuildingManager.Building building = block.GetBuilding();
 
             if (building != null)
