@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.4.1")]
+    [Info("Teleportication", "RFC1920", "1.4.2")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -82,7 +82,7 @@ namespace Oxide.Plugins
         private readonly string logfilename = "log";
 
         [PluginReference]
-        private readonly Plugin Friends, Clans, Economics, ServerRewards, GridAPI, NoEscape, Vanish, CopyPaste, ZoneManager, LootProtect;
+        private readonly Plugin Friends, Clans, Economics, ServerRewards, GridAPI, NoEscape, Vanish, ZoneManager;//, CopyPaste, LootProtect;
 
         private readonly int blockLayer = LayerMask.GetMask("Construction");
 
@@ -247,6 +247,7 @@ namespace Oxide.Plugins
                 ["hometooclose"] = "Too close to another home - minimum distance {0}",
                 ["homeset"] = "Home {0} has been set.",
                 ["homeremoved"] = "Home {0} has been removed.",
+                ["homewasremoved"] = "Home has been removed - {0}.",
                 ["setblocked"] = "Home cannot be set here - {0}",
                 ["blocked"] = "You cannot teleport while blocked!",
                 ["blockedinvis"] = "You cannot teleport while invisible!",
@@ -1075,9 +1076,9 @@ namespace Oxide.Plugins
                 BasePlayer target = FindPlayerByName(args[0]);
                 if (target != null)
                 {
-                    ulong sourceId = ulong.Parse(iplayer.Id);
+                    ulong requesterId = ulong.Parse(iplayer.Id);
                     ulong targetId = target.userID;
-                    if (sourceId == targetId)
+                    if (requesterId == targetId)
                     {
                         if (configData.Options.debug)
                         {
@@ -1091,18 +1092,18 @@ namespace Oxide.Plugins
                     }
                     if (configData.Types["TPR"].AutoAccept)
                     {
-                        if (IsFriend(sourceId, targetId))
+                        if (IsFriend(requesterId, targetId))
                         {
                             DoLog("AutoTPA!");
-                            if (TeleportTimers.ContainsKey(sourceId)) TeleportTimers.Remove(sourceId);
+                            if (TeleportTimers.ContainsKey(requesterId)) TeleportTimers.Remove(requesterId);
                             AddTimer(iplayer.Object as BasePlayer, target.transform.position, "TPR", iplayer.Name);
                             //TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown, source = (iplayer.Object as BasePlayer), targetName = iplayer.Name, targetLocation = target.transform.position });
-                            HandleTimer(sourceId, "TPR", true);
+                            HandleTimer(requesterId, "TPR", true);
                         }
                     }
                     else
                     {
-                        TPRSetup(sourceId, targetId);
+                        TPRSetup(requesterId, targetId);
                     }
                 }
             }
@@ -1115,29 +1116,29 @@ namespace Oxide.Plugins
             DoLog($"Checking for tpr request for {iplayer.Id}");
             if (TPRRequests.ContainsValue(ulong.Parse(iplayer.Id)))
             {
-                ulong sourceId = TPRRequests.FirstOrDefault(x => x.Value == ulong.Parse(iplayer.Id)).Key;
-                DoLog($"Found a request from {sourceId}");
-                BasePlayer srcpl = FindPlayerById(sourceId);
+                ulong requesterId = TPRRequests.FirstOrDefault(x => x.Value == ulong.Parse(iplayer.Id)).Key;
+                DoLog($"Found a request from {requesterId}");
+                BasePlayer requestpl = FindPlayerById(requesterId);
 
-                if (srcpl != null)
+                if (requestpl != null)
                 {
-                    DoLog($"Setting timer for {srcpl.displayName} to tp to {iplayer.Name}");
-                    if (TeleportTimers.ContainsKey(sourceId)) TeleportTimers.Remove(sourceId);
+                    DoLog($"Setting timer for {requestpl.displayName} to tp to {iplayer.Name}");
+                    if (TeleportTimers.ContainsKey(requesterId)) TeleportTimers.Remove(requesterId);
                     BasePlayer pl = iplayer.Object as BasePlayer;
-                    TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, cooldown = configData.Types["TPR"].CountDown, source = srcpl, targetName = iplayer.Name, targetLocation = pl.transform.position });
-                    HandleTimer(sourceId, "TPR", true);
+                    TeleportTimers.Add(requesterId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, cooldown = configData.Types["TPR"].CountDown, source = requestpl, targetName = iplayer.Name, targetLocation = pl.transform.position });
+                    HandleTimer(requesterId, "TPR", true);
 
-                    if (!DailyUsage["TPR"].ContainsKey(srcpl.userID)) DailyUsage["TPR"].Add(srcpl.userID, 0);
-                    float usage = GetDailyLimit(srcpl.userID, "TPR") - DailyUsage["TPR"][srcpl.userID];
+                    if (!DailyUsage["TPR"].ContainsKey(requestpl.userID)) DailyUsage["TPR"].Add(requestpl.userID, 0);
+                    float usage = GetDailyLimit(requestpl.userID, "TPR") - DailyUsage["TPR"][requestpl.userID];
                     if (usage > 0)
                     {
                         Message(iplayer, "remaining", usage.ToString(), "TPR");
                     }
 
-                    Message(srcpl.IPlayer, "tpanotify", iplayer.Name, configData.Types["TPR"].CountDown.ToString());
+                    Message(requestpl.IPlayer, "tpanotify", iplayer.Name, configData.Types["TPR"].CountDown.ToString());
                     return;
                 }
-                TPRRequests.Remove(srcpl.userID);
+                TPRRequests.Remove(requestpl.userID);
             }
         }
         #endregion
@@ -1215,7 +1216,7 @@ namespace Oxide.Plugins
         #endregion
 
         #region main
-        private void TPRSetup(ulong sourceId, ulong targetId)
+        private void TPRSetup(ulong requesterId, ulong targetId)
         {
             //if (TPRRequests.ContainsValue(targetId))
             //{
@@ -1224,16 +1225,20 @@ namespace Oxide.Plugins
             //        TPRRequests.Remove(item.Key);
             //    }
             //}
-            if (TPRRequests.ContainsKey(sourceId)) TPRRequests.Remove(sourceId);
+            if (TPRRequests.ContainsKey(requesterId)) TPRRequests.Remove(requesterId);
 
-            BasePlayer source = FindPlayerById(sourceId);
+            BasePlayer source = FindPlayerById(requesterId);
             if (CanTeleport(source, source.transform.position.ToString(), "TPR"))
             {
-                TPRRequests.Add(sourceId, targetId);
+                TPRRequests.Add(requesterId, targetId);
 
-                if (TPRTimers.ContainsKey(sourceId)) TPRTimers.Remove(sourceId);
-                TPRTimers.Add(sourceId, new TPRTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown });
-                HandleTimer(sourceId, "TPR", true);
+                if (TPRTimers.ContainsKey(requesterId))
+                {
+                    TPRTimers[requesterId].timer.Destroy();
+                    TPRTimers.Remove(requesterId);
+                }
+                TPRTimers.Add(requesterId, new TPRTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown });
+                HandleTimer(requesterId, "TPR", true);
                 NextTick(() => TPRNotification());
             }
         }
@@ -1244,17 +1249,17 @@ namespace Oxide.Plugins
             {
                 if (TPRTimers.ContainsKey(req.Key))
                 {
-                    IPlayer src = covalence.Players.FindPlayerById(req.Key.ToString());
-                    IPlayer tgt = covalence.Players.FindPlayerById(req.Value.ToString());
-                    if (reject)
+                    BasePlayer src = FindPlayerById(req.Key);
+                    BasePlayer tgt = FindPlayerById(req.Value);
+                    if (reject && src != null && tgt != null)
                     {
-                        Message(src, "tprreject", req.Value.ToString());
+                        Message(src?.IPlayer, "tprreject", tgt?.displayName);
                         TPRTimers[req.Key].timer.Destroy();
                         TPRTimers.Remove(req.Key);
                         return;
                     }
-                    Message(tgt, "tprnotify", src.Name);
-                    TPRTimers[req.Key].timer.Destroy();
+                    Message(tgt?.IPlayer, "tprnotify", src.displayName);
+                    //TPRTimers[req.Key].timer.Destroy();
                 }
             }
         }
@@ -1275,6 +1280,21 @@ namespace Oxide.Plugins
             {
                 Message(player.IPlayer, "limit", type.ToLower(), DailyUsage[type][player.userID].ToString(), limit.ToString());
                 return false;
+            }
+
+            // FOUNDATION
+            if ((string.Equals(type, "home", StringComparison.CurrentCultureIgnoreCase))// || string.Equals(type, "tpb", StringComparison.CurrentCultureIgnoreCase))
+                && configData.Options.HomeRequireFoundation)
+            {
+                string reason;
+                if (!HomeCheckFoundation(player, StringToVector3(location), "", out reason))
+                {
+                    if (string.Equals(type, "home", StringComparison.CurrentCultureIgnoreCase))
+                    {
+                        Message(player.IPlayer, "homewasremoved", reason);
+                    }
+                    return false;
+                }
             }
 
             // COOLDOWN
@@ -1465,30 +1485,55 @@ namespace Oxide.Plugins
             }
             if (configData.Options.HomeRequireFoundation)
             {
-                DoLog($"Checking for foundation/floor at target {position}");
-                RaycastHit hitinfo;
-                if (Physics.Raycast(position, Vector3.down, out hitinfo, 0.2f, blockLayer))
+                List<string> home = (List<string>)RunSingleSelectQuery($"SELECT name FROM rtp_player WHERE userid='{player.userID}' AND location='{position}'");
+                if (!HomeCheckFoundation(player, position, home[0], out reason))
                 {
-                    BaseEntity entity = hitinfo.GetEntity();
-                    if (entity.ShortPrefabName.Equals("foundation") || entity.ShortPrefabName.Equals("floor")
-                        || entity.ShortPrefabName.Equals("foundation.triangle") || entity.ShortPrefabName.Equals("floor.triangle")
-                        || position.y < entity.WorldSpaceBounds().ToBounds().max.y)
-                    {
-                        DoLog("  Found one.  Checking block perms, etc...");
-                        rtrn = true;
-                        if (!BlockCheck(entity, player, position, out reason, configData.Options.HonorBuildingPrivilege))
-                        {
-                            rtrn = false;
-                        }
-                    }
-                }
-                else
-                {
-                    reason = Lang("missingfoundation");
                     rtrn = false;
                 }
             }
 
+            return rtrn;
+        }
+
+        private bool HomeCheckFoundation(BasePlayer player, Vector3 position, string home, out string reason)
+        {
+            reason = null;
+            bool rtrn = false;
+            DoLog($"Checking for foundation/floor at target {position}");
+            RaycastHit hitinfo;
+            if (Physics.Raycast(position, Vector3.down, out hitinfo, 0.2f, blockLayer))
+            {
+                BaseEntity entity = hitinfo.GetEntity();
+                if (entity.ShortPrefabName.Equals("foundation") || entity.ShortPrefabName.Equals("floor")
+                    || entity.ShortPrefabName.Equals("foundation.triangle") || entity.ShortPrefabName.Equals("floor.triangle")
+                    || position.y < entity.WorldSpaceBounds().ToBounds().max.y)
+                {
+                    DoLog("  Found one.  Checking block perms, etc...");
+                    rtrn = true;
+                    if (!BlockCheck(entity, player, position, out reason, configData.Options.HonorBuildingPrivilege))
+                    {
+                        rtrn = false;
+                    }
+                }
+            }
+            else
+            {
+                if (configData.Options.HomeRemoveInvalid)
+                {
+                    if (string.IsNullOrEmpty(home)) // CanTeleport()
+                    {
+                        DoLog($"Removing home for {player.displayName} where location is {position}");
+                        RunUpdateQuery($"DELETE FROM rtp_player WHERE userid='{player.userID}' AND location='{position}'");
+                    }
+                    else // sethome
+                    {
+                        DoLog($"Removing home for {player.displayName} where name is {home}");
+                        RunUpdateQuery($"DELETE FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'");
+                    }
+                }
+                reason = Lang("missingfoundation");
+                rtrn = false;
+            }
             return rtrn;
         }
 
@@ -1707,6 +1752,7 @@ namespace Oxide.Plugins
         {
             return Regex.Replace(str, "[^a-zA-Z0-9_.]+", "", RegexOptions.Compiled);
         }
+
         private static BasePlayer FindPlayerByName(string name)
         {
             foreach (BasePlayer current in BasePlayer.activePlayerList)
