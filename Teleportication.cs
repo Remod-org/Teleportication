@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.4.2")]
+    [Info("Teleportication", "RFC1920", "1.4.3")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -1114,6 +1114,7 @@ namespace Oxide.Plugins
         {
             if (iplayer.Id == "server_console") return;
             DoLog($"Checking for tpr request for {iplayer.Id}");
+
             if (TPRRequests.ContainsValue(ulong.Parse(iplayer.Id)))
             {
                 ulong requesterId = TPRRequests.FirstOrDefault(x => x.Value == ulong.Parse(iplayer.Id)).Key;
@@ -1136,6 +1137,7 @@ namespace Oxide.Plugins
                     }
 
                     Message(requestpl.IPlayer, "tpanotify", iplayer.Name, configData.Types["TPR"].CountDown.ToString());
+                    TPRRequests.Remove(requestpl.userID);
                     return;
                 }
                 TPRRequests.Remove(requestpl.userID);
