@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.4.3")]
+    [Info("Teleportication", "RFC1920", "1.4.4")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -146,8 +146,8 @@ namespace Oxide.Plugins
 
             if (configData.Options.AddTownMapMarker)
             {
-                List<string> target = (List<string>)RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name='town'");
-                if (target != null)
+                List<string> target = RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name='town'");
+                if (target.Count > 0)
                 {
                     foreach (MapMarkerGenericRadius mm in UnityEngine.Object.FindObjectsOfType<MapMarkerGenericRadius>().Where(x => x.name == "town").ToList())
                     {
@@ -667,7 +667,7 @@ namespace Oxide.Plugins
                     {
                         c.Open();
                         string q = $"SELECT name FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'";
-                        Puts(q);
+                        DoLog(q);
                         using (SQLiteCommand ct = new SQLiteCommand(q, c))
                         using (SQLiteDataReader pl = ct.ExecuteReader())
                         {
@@ -696,8 +696,8 @@ namespace Oxide.Plugins
             {
                 // Remove home
                 string home = args[1];
-                List<string> found = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'");
-                if (found != null)
+                List<string> found = RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'");
+                if (found.Count > 0)
                 {
                     RunUpdateQuery($"DELETE FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'");
                     Message(iplayer, "homeremoved", home);
@@ -714,9 +714,9 @@ namespace Oxide.Plugins
                 if (target != null && IsFriend(player.userID, target.userID))
                 {
                     string home = args[1];
-                    List<string> homes = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{target.userID}' AND name='{home}'");
+                    List<string> homes = RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{target.userID}' AND name='{home}'");
 
-                    if (CanTeleport(player, homes[0], "Home"))
+                    if (homes.Count > 0 && CanTeleport(player, homes[0], "Home"))
                     {
                         if (!TeleportTimers.ContainsKey(player.userID))
                         {
@@ -751,8 +751,8 @@ namespace Oxide.Plugins
                 CuiHelper.DestroyUi(player, HGUI);
                 // Use an already set home
                 string home = args[0];
-                List<string> homes = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'");
-                if (homes == null)
+                List<string> homes = RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'");
+                if (homes.Count == 0)
                 {
                     Message(iplayer, "homemissing");
                     return;
@@ -927,9 +927,9 @@ namespace Oxide.Plugins
                         return;
                     }
                     const string dtype = "Tunnel";
-                    List<string> tunnel = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='Tunnel {dtarget}'");
+                    List<string> tunnel = RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='Tunnel {dtarget}'");
 
-                    if (tunnel != null)
+                    if (tunnel.Count > 0)
                     {
                         if (CanTeleport(player, tunnel[0], dtype))
                         {
@@ -973,9 +973,9 @@ namespace Oxide.Plugins
                     if (!iplayer.HasPermission(permTP_Outpost)) { Message(iplayer, "notauthorized"); return; }
                     goto case "all";
                 case "all":
-                    List<string> target = (List<string>) RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='{command}'");
+                    List<string> target = RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='{command}'");
                     string type = TI.ToTitleCase(command);
-                    if (target != null)
+                    if (target.Count > 0)
                     {
                         if (CanTeleport(player, target[0], type))
                         {
@@ -1153,8 +1153,8 @@ namespace Oxide.Plugins
             List<string> reserved = new List<string>() { "bandit", "outpost", "town" };
             if (reserved.Contains(name)) return false;
 
-            List<string> target = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='{name}'");
-            if (target == null) return false;
+            List<string> target = RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='{name}'");
+            if (target.Count == 0) return false;
 
             RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('{name}', '{location}')");
             return true;
@@ -1167,8 +1167,8 @@ namespace Oxide.Plugins
             List<string> reserved = new List<string>() { "bandit", "outpost", "town" };
             if (reserved.Contains(name)) return false;
 
-            List<string> target = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='{name}')");
-            if (target == null || target.Count == 0) return false;
+            List<string> target = RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='{name}')");
+            if (target.Count == 0) return false;
 
             RunUpdateQuery($"DELETE FROM rtp_server WHERE name='{name}'");
             return true;
@@ -1178,8 +1178,8 @@ namespace Oxide.Plugins
         {
             if (name.Length > 0)
             {
-                List<string> target = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='{name}'");
-                if (target == null || target.Count == 0) return false;
+                List<string> target = RunSingleSelectQuery($"SELECT location FROM rtp_server WHERE name='{name}'");
+                if (target.Count == 0) return false;
 
                 Vector3 pos = StringToVector3(target[0]);
                 if (pos != default(Vector3) && pos != Vector3.zero) return pos;
@@ -1209,8 +1209,8 @@ namespace Oxide.Plugins
 
         private bool ResetServerTp()
         {
-            List<string> target = (List<string>)RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name NOT IN ('town', 'outpost', 'bandit')");
-            if (target == null || target.Count == 0) return false;
+            List<string> target = RunSingleSelectQuery("SELECT location FROM rtp_server WHERE name NOT IN ('town', 'outpost', 'bandit')");
+            if (target.Count == 0) return false;
 
             RunUpdateQuery("DELETE FROM rtp_server WHERE name NOT IN ('town', 'outpost', 'bandit')");
             return true;
@@ -1447,12 +1447,14 @@ namespace Oxide.Plugins
 
         private bool CanSetHome(BasePlayer player, Vector3 position, out string reason)
         {
-            reason = null;
+            reason = "";
             bool rtrn = true;
 
-            List<string> checkhome = (List<string>)RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{player.userID}'");
-            if (checkhome != null)
+            DoLog($"CanSetHome checking for {player?.UserIDString}");
+            List<string> checkhome = RunSingleSelectQuery($"SELECT location FROM rtp_player WHERE userid='{player.userID}'");
+            if (checkhome.Count > 0)
             {
+                DoLog(" checking VIP settings...");
                 float homelimit = configData.Types["Home"].HomesLimit;
                 string isvip = "";
                 // Check all listed VIP permissions, if any, and set the user's limit to that if they have that permission
@@ -1485,10 +1487,12 @@ namespace Oxide.Plugins
                     }
                 }
             }
+
             if (configData.Options.HomeRequireFoundation)
             {
-                List<string> home = (List<string>)RunSingleSelectQuery($"SELECT name FROM rtp_player WHERE userid='{player.userID}' AND location='{position}'");
-                if (!HomeCheckFoundation(player, position, home[0], out reason))
+                DoLog($"Checking for existing homes at {position}");
+                List<string> home = RunSingleSelectQuery($"SELECT name FROM rtp_player WHERE userid='{player.userID}' AND location='{position}'");
+                if (home.Count > 0 && !HomeCheckFoundation(player, position, home[0], out reason))
                 {
                     rtrn = false;
                 }
@@ -2174,8 +2178,9 @@ namespace Oxide.Plugins
             return true;
         }
 
-        private object RunSingleSelectQuery(string query)
+        private List<string> RunSingleSelectQuery(string query)
         {
+            DoLog($"RunSingleSelectQuery:\n\t{query}");
             List<string> output = new List<string>();
             using (SQLiteConnection c = new SQLiteConnection(connStr))
             {
@@ -2185,7 +2190,7 @@ namespace Oxide.Plugins
                 {
                     while (rtbl.Read())
                     {
-                        string test = rtbl.GetValue(0).ToString();
+                        string test = !rtbl.IsDBNull(0) ? rtbl.GetString(0) : "";
                         if (test != "")
                         {
                             output.Add(test);
@@ -2193,8 +2198,7 @@ namespace Oxide.Plugins
                     }
                 }
             }
-            if (output.Count > 0) return output;
-            return null;
+            return output;
         }
 
         private string RandomString()
