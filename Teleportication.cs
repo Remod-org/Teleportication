@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.4.5")]
+    [Info("Teleportication", "RFC1920", "1.4.6")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -161,7 +161,8 @@ namespace Oxide.Plugins
             // Dummy file, creates the directory for us.
             DynamicConfigFile dataFile = Interface.Oxide.DataFileSystem.GetDatafile(Name + "/teleportication");
             dataFile.Save();
-            connStr = $"Data Source={Path.Combine(Interface.Oxide.DataDirectory, Name, "teleportication.db")};";
+            //connStr = $"Data Source={Path.Combine(Interface.Oxide.DataDirectory, Name, "teleportication.db")};";
+            connStr = $"Data Source={Interface.Oxide.DataDirectory}{Path.DirectorySeparatorChar}{Name}{Path.DirectorySeparatorChar}teleportication.db;";
 
             CooldownTimers.Add("Home", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("Town", new Dictionary<ulong, TPTimer>());
@@ -576,7 +577,8 @@ namespace Oxide.Plugins
                         using (SQLiteConnection c = new SQLiteConnection(connStr))
                         {
                             c.Open();
-                            string bkup = $"Data Source={Path.Combine(Interface.Oxide.DataDirectory, Name, backupfile)};";
+                            //string bkup = $"Data Source={Path.Combine(Interface.Oxide.DataDirectory, Name, backupfile)};";
+                            string bkup = $"Data Source={Interface.Oxide.DataDirectory}{Path.DirectorySeparatorChar}{Name}{Path.DirectorySeparatorChar}{backupfile};";
                             using (SQLiteConnection d = new SQLiteConnection(bkup))
                             {
                                 d.Open();
