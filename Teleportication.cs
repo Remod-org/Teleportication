@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.4.6")]
+    [Info("Teleportication", "RFC1920", "1.4.7")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -532,7 +532,7 @@ namespace Oxide.Plugins
                             output += "\t" + cdt.Key + ": \n";
                             foreach (KeyValuePair<ulong, TPTimer> tinfo in cdt.Value)
                             {
-                                output += $"\t\t{BasePlayer.Find(tinfo.Key.ToString()).displayName}, "
+                                output += $"\t\t{BasePlayer.FindAwakeOrSleeping(tinfo.Key.ToString()).displayName}, "
                                     + $"Cooldown: {tinfo.Value.cooldown}, "
                                     + $"Remaining: {Math.Abs(Time.realtimeSinceStartup - tinfo.Value.start - tinfo.Value.cooldown)}\n";
                             }
@@ -542,25 +542,25 @@ namespace Oxide.Plugins
                         using (SQLiteConnection c = new SQLiteConnection(connStr))
                         {
                             c.Open();
-                            using (SQLiteCommand q = new SQLiteCommand("SELECT userid FROM rtp_player", c))
+                            using (SQLiteCommand q = new SQLiteCommand("SELECT userid FROM rtp_player ORDER BY userid", c))
                             using (SQLiteDataReader svr = q.ExecuteReader())
                             {
                                 while (svr.Read())
                                 {
-                                    string name = !svr.IsDBNull(0) ? svr.GetString(0) : "";
-                                    if (name == string.Empty) continue;
-                                    if (!pCount.ContainsKey(name))
+                                    string playerId = !svr.IsDBNull(0) ? svr.GetString(0) : "";
+                                    if (playerId.Length == 0) continue;
+                                    if (!pCount.ContainsKey(playerId))
                                     {
-                                        pCount.Add(name, 1);
+                                        pCount.Add(playerId, 1);
                                         continue;
                                     }
-                                    pCount[name]++;
+                                    pCount[playerId]++;
                                 }
                             }
                         }
                         foreach (KeyValuePair<string, int> pHomes in pCount)
                         {
-                            output += $"\t{BasePlayer.Find(pHomes.Key).displayName} has {pHomes.Value} homes";
+                            output += $"\t{BasePlayer.FindAwakeOrSleeping(pHomes.Key)?.displayName} has {pHomes.Value} homes\n";
                         }
                         Message(iplayer, output);
                         break;
