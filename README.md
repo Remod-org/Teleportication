@@ -86,6 +86,7 @@ Note that "set" can be changed by config, e.g. for /home set, /town set...
   },
   "Types": {
     "Home": {
+      "BlockOnCrafting": false,
       "BlockOnHurt": false,
       "BlockOnCold": false,
       "BlockOnHot": false,
@@ -145,6 +146,7 @@ Note that "set" can be changed by config, e.g. for /home set, /town set...
     - `TownZoneFlags` -- The default values here prevent town decay and targeting by the heli within the town zone.  You can remove this if desired by setting this variable to [].  Or, edit the zone flags as you like.  See the documentation for ZoneManager.
 
 #### For each of home, town, bandit, outpost, tpr, flags may be set as follows:
+    - `BlockOnCrafting`: false -- Block if player is currently crafting.
     - `BlockOnHurt`: false -- Block if player is injured (bleeding, etc.).
     - `BlockOnCold`: false -- Block if player is too cold.
     - `BlockOnHot`: false -- Block if player is too hot.
