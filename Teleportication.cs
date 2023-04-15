@@ -20,7 +20,6 @@
     Optionally you can also view the license at <http://www.gnu.org/licenses/>.
 */
 #endregion License (GPL v2)
-using Facepunch;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
@@ -41,7 +40,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.4.7")]
+    [Info("Teleportication", "RFC1920", "1.4.8")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -66,6 +65,7 @@ namespace Oxide.Plugins
 
         private const string permTP_Use = "teleportication.use";
         private const string permTP_TP  = "teleportication.tp";
+        private const string permTP_OTHERS  = "teleportication.tpothers";
         private const string permTP_TPB = "teleportication.tpb";
         private const string permTP_TPR = "teleportication.tpr";
         private const string permTP_Town = "teleportication.town";
@@ -82,7 +82,7 @@ namespace Oxide.Plugins
         private readonly string logfilename = "log";
 
         [PluginReference]
-        private readonly Plugin Friends, Clans, Economics, ServerRewards, GridAPI, NoEscape, Vanish, ZoneManager;//, CopyPaste, LootProtect;
+        private readonly Plugin Friends, Clans, Economics, ServerRewards, GridAPI, NoEscape, Vanish, ZoneManager, BankSystem;//, CopyPaste, LootProtect;
 
         private readonly int blockLayer = LayerMask.GetMask("Construction");
 
@@ -202,6 +202,7 @@ namespace Oxide.Plugins
             permission.RegisterPermission(permTP_TPB, this);
             permission.RegisterPermission(permTP_TPR, this);
             permission.RegisterPermission(permTP_TP,  this);
+            permission.RegisterPermission(permTP_OTHERS,  this);
             permission.RegisterPermission(permTP_Town, this);
             permission.RegisterPermission(permTP_Bandit, this);
             permission.RegisterPermission(permTP_Outpost, this);
@@ -288,12 +289,14 @@ namespace Oxide.Plugins
                 ["BackupDone"] = "Teleportication database has been backed up to {0}",
                 ["importhelp"] = "/tpadmin import {r/n} {y/1/yes/true}\n\t import RTeleportion or NTeleportation\n\tadd y or 1 or true to actually import\n\totherwise display data only",
                 ["tphelp"] = "/tp X,Z OR /tp X,Y,Z -- e.g. /tp 121,-535 will teleport the player to that location on the map.\nIf Y is not specified, player will be moved to ground level.",
+                ["tphelpnew"] = "/tp X,Z OR /tp X,Y,Z -- e.g. /tp 121,-535 will teleport the player to that location on the map.\n  If Y is not specified, player will be moved to ground level.\n/tp YOURNAME PLAYERNAME\n  Teleport yourself to another player.\n/tp PLAYERNAME YOURNAME\n  Teleport specified player to your location, if allowed.",
                 ["cannottp"] = "Cannot teleport to desired location.",
                 ["obstructed"] = "The target location is too close to construction.",
                 ["importdone"] = "Homes have been imported from datafile '{0}'",
                 ["importing"] = "Importing data for {0}",
                 ["tpcancelled"] = "Teleport cancelled!",
                 ["tprself"] = "You cannot tpr to yourself.",
+                ["playernotfound"] = "Source or target player not found",
                 ["tprnotify"] = "{0} has requested to be teleported to you.\nType /tpa to accept.",
                 ["tpanotify"] = "{0} has accepted your teleport request.  You will be teleported in {1} second(s).",
                 ["tprreject"] = "{0} rejected your request.  Or, the request timed out."
@@ -323,45 +326,52 @@ namespace Oxide.Plugins
         private void CmdTp(IPlayer iplayer, string command, string[] args)
         {
             if (configData.Options.debug) { string debug = string.Join(",", args); Puts($"{debug}"); }
-
-            if (!iplayer.HasPermission(permTP_TP)) { Message(iplayer, "notauthorized"); return; }
-            if (args.Length > 0)
+            if (!iplayer.HasPermission(permTP_TP) && !iplayer.HasPermission(permTP_OTHERS) && !iplayer.HasPermission(permTP_Admin))
             {
+                Message(iplayer, "notauthorized"); return;
+            }
+
+            BasePlayer player = iplayer.Object as BasePlayer;
+            if (args.Length == 1)
+            {
+                // TP to coordinates X,Y,Z or X,0,Z (/tp 100,0,100 OR /tp 100,100)
+                // 0 or no Y arg will be translated to the terrain height at the destination
                 string[] input = args[0].Split(',');
                 if (input.Length > 1)
                 {
-                    ulong userid = ulong.Parse(iplayer.Id);
-                    Vector3 pos;
+                    Vector3 pos = default(Vector3);
                     string parsed;
                     if (input.Length == 3)
                     {
                         parsed = input[0] + "," + input[1] + "," + input[2];
+                        DoLog($"Parsed arg input from X,Y,Z into coordinates: s:{parsed}/v:{pos}");
                         pos = StringToVector3(parsed);
                     }
-                    else
+                    else if (input.Length == 2)
                     {
                         parsed = input[0] + ",0," + input[1];
                         pos = StringToVector3(parsed);
+                        DoLog($"Parsed arg input from X,Y into coordinates: s:{parsed}/v:{pos}");
                         if (TerrainMeta.HeightMap.GetHeight(pos) > pos.y)
                         {
                             // Ensure they are sent above the terrain
                             pos.y = TerrainMeta.HeightMap.GetHeight(pos);
                         }
                     }
+                    else
+                    {
+                        Message(iplayer, "tphelpnew");
+                        return;
+                    }
 
-                    if (CanTeleport(iplayer.Object as BasePlayer, parsed, "TP"))
+                    ulong userid = ulong.Parse(iplayer.Id);
+                    if (CanTeleport(player, parsed, "TP"))
                     {
                         if (!TeleportTimers.ContainsKey(userid))
                         {
-                            AddTimer(iplayer.Object as BasePlayer, pos, "TP", "TP");
+                            AddTimer(player, pos, "TP", "TP");
                             HandleTimer(userid, "TP", true);
-
-                            if (CooldownTimers["TP"].ContainsKey(userid))
-                            {
-                                CooldownTimers["TP"][userid].timer.Destroy();
-                                CooldownTimers["TP"].Remove(userid);
-                            }
-                            CreateCooldown(iplayer.Object as BasePlayer, "TP");
+                            CreateCooldown(player, "TP");
 
                             if (!DailyUsage["TP"].ContainsKey(userid)) DailyUsage["TP"].Add(userid, 0);
                             float usage = GetDailyLimit(userid, "TP") - DailyUsage["TP"][userid];
@@ -372,14 +382,70 @@ namespace Oxide.Plugins
                         }
                         else if (TeleportTimers[userid].cooldown == 0)
                         {
-                            Teleport(iplayer.Object as BasePlayer, pos, "TP");
+                            Teleport(player, pos, "TP");
                         }
                     }
                 }
             }
+            else if (args.Length == 2)
+            {
+                // Player to player tp (/tp src target), sleeping or not
+                BasePlayer srcPlayer = FindPlayerByName(args[0], true);
+                BasePlayer tgtPlayer = FindPlayerByName(args[1], true);
+
+                if (srcPlayer == null || tgtPlayer == null)
+                {
+                    Message(iplayer, "playernotfound");
+                    return;
+                }
+
+                // 'player' set above, i.e. the player running the command
+                bool allowed = false;
+                if (srcPlayer != player && tgtPlayer != player)
+                {
+                    if (iplayer.HasPermission(permTP_Admin))
+                    {
+                        // Allowed to tp 2nd player to 3rd player based on permTP_Admin
+                        allowed = true;
+                    }
+                    else
+                    {
+                        // No permission to tp 2nd player to 3rd player, i.e. not the calling player
+                        Message(iplayer, "notauthorized");
+                        return;
+                    }
+                }
+                else if (tgtPlayer == player && iplayer.HasPermission(permTP_OTHERS))
+                {
+                    // Allowed to tp srcPlayer to tgtPlayer (self) based on permTP_OTHERS
+                    allowed = true;
+                }
+                else if (srcPlayer == player)
+                {
+                    // Allowed to tp srcPlayer (self) to tgtPlayer based on perm_TP
+                    allowed = true;
+                }
+
+                if (allowed)
+                {
+                    if (TeleportTimers.ContainsKey(srcPlayer.userID)) TeleportTimers.Remove(srcPlayer.userID);
+
+                    AddTimer(srcPlayer, tgtPlayer.transform.position, "TP", "TP");
+                    HandleTimer(srcPlayer.userID, "TP", true);
+
+                    if (!DailyUsage["TP"].ContainsKey(player.userID)) DailyUsage["TP"].Add(player.userID, 0);
+                    float usage = GetDailyLimit(player.userID, "TP") - DailyUsage["TP"][player.userID];
+                    if (usage > 0)
+                    {
+                        Message(iplayer, "remaining", usage.ToString(), "TP");
+                    }
+                    return;
+                }
+                Message(iplayer, "notauthorized");
+            }
             else
             {
-                Message(iplayer, "tphelp");
+                Message(iplayer, "tphelpnew");
             }
         }
 
@@ -478,7 +544,6 @@ namespace Oxide.Plugins
                     case "wipe":
                         Message(iplayer, "Wiping data!");
                         CreateOrClearTables(true);
-                        //AutoSpawnTown();
                         FindMonuments();
                         break;
                     case "info":
@@ -760,11 +825,6 @@ namespace Oxide.Plugins
                         {
                             AddTimer(player, StringToVector3(homes[0]), "Home", "Home");
                             HandleTimer(player.userID, "Home", true);
-                            if (CooldownTimers["Home"].ContainsKey(player.userID))
-                            {
-                                CooldownTimers["Home"][player.userID].timer.Destroy();
-                                CooldownTimers["Home"].Remove(player.userID);
-                            }
                             CreateCooldown(iplayer.Object as BasePlayer, "Home");
 
                             if (!DailyUsage["Home"].ContainsKey(player.userID)) DailyUsage["Home"].Add(player.userID, 0);
@@ -940,11 +1000,6 @@ namespace Oxide.Plugins
                             {
                                 AddTimer(player, StringToVector3(tunnel[0]), dtype, Lang("town"));
                                 HandleTimer(player.userID, dtype, true);
-                                if (CooldownTimers[dtype].ContainsKey(player.userID))
-                                {
-                                    CooldownTimers[dtype][player.userID].timer.Destroy();
-                                    CooldownTimers[dtype].Remove(player.userID);
-                                }
                                 CreateCooldown(iplayer.Object as BasePlayer, "Town");
 
                                 if (!DailyUsage["Town"].ContainsKey(player.userID)) DailyUsage["Town"].Add(player.userID, 0);
@@ -985,11 +1040,6 @@ namespace Oxide.Plugins
                             {
                                 AddTimer(player, StringToVector3(target[0]), type, Lang("town"));
                                 HandleTimer(player.userID, type, true);
-                                if (CooldownTimers[type].ContainsKey(player.userID))
-                                {
-                                    CooldownTimers[type][player.userID].timer.Destroy();
-                                    CooldownTimers[type].Remove(player.userID);
-                                }
                                 CreateCooldown(iplayer.Object as BasePlayer, "Town");
 
                                 if (!DailyUsage["Town"].ContainsKey(player.userID)) DailyUsage["Town"].Add(player.userID, 0);
@@ -1031,11 +1081,6 @@ namespace Oxide.Plugins
                     if (TeleportTimers.ContainsKey(player.userID)) TeleportTimers.Remove(player.userID);
                     AddTimer(player, oldloc, "TPB", Lang("tpb"));
                     HandleTimer(player.userID, "TPB", true);
-                    if (CooldownTimers["TPB"].ContainsKey(player.userID))
-                    {
-                        CooldownTimers["TPB"][player.userID].timer.Destroy();
-                        CooldownTimers["TPB"].Remove(player.userID);
-                    }
                     CreateCooldown(iplayer.Object as BasePlayer, "TPB");
 
                     if (!DailyUsage["TPB"].ContainsKey(player.userID)) DailyUsage["TPB"].Add(player.userID, 0);
@@ -1150,10 +1195,10 @@ namespace Oxide.Plugins
         #region InboundHooks
         private bool AddServerTp(string name, Vector3 location) => SetServerTp(name, location);
 
-        private bool SetServerTp(string name, Vector3 location)
+        private bool SetServerTp(string name, Vector3 location, bool force = false)
         {
             List<string> reserved = new List<string>() { "bandit", "outpost", "town" };
-            if (reserved.Contains(name)) return false;
+            if (reserved.Contains(name) && !force) return false;
 
             List<string> target = QuerySingleStringToList($"SELECT location FROM rtp_server WHERE name='{name}'");
             if (target.Count == 0) return false;
@@ -1295,7 +1340,14 @@ namespace Oxide.Plugins
                 {
                     if (string.Equals(type, "home", StringComparison.CurrentCultureIgnoreCase))
                     {
-                        Message(player.IPlayer, "homewasremoved", reason);
+                        if (configData.Options.HomeRemoveInvalid)
+                        {
+                            Message(player.IPlayer, "homewasremoved", reason);
+                        }
+                        else
+                        {
+                            Message(player.IPlayer, "invalidhome", reason);
+                        }
                     }
                     return false;
                 }
@@ -1484,14 +1536,16 @@ namespace Oxide.Plugins
                 }
             }
 
-            if (configData.Options.HomeRequireFoundation)
+            if (configData.Options.HomeRequireFoundation && !HomeCheckFoundation(player, position, "", out reason))
             {
-                DoLog($"Checking for existing homes at {position}");
-                List<string> home = QuerySingleStringToList($"SELECT name FROM rtp_player WHERE userid='{player.userID}' AND location='{position}'");
-                if (home.Count > 0 && !HomeCheckFoundation(player, position, home[0], out reason))
-                {
-                    rtrn = false;
-                }
+                return false;
+            }
+
+            string monName = NearMonument(player);
+            if (monName != null)
+            {
+                reason = Lang("montooclose", null, "sethome", monName);
+                return false;
             }
 
             return rtrn;
@@ -1503,9 +1557,10 @@ namespace Oxide.Plugins
             bool rtrn = false;
             DoLog($"Checking for foundation/floor at target {position}");
             RaycastHit hitinfo;
-            if (Physics.Raycast(position, Vector3.down, out hitinfo, 0.2f, blockLayer))
+            if (Physics.Raycast(position + new Vector3(0, 0.5f, 0), Vector3.down, out hitinfo, 0.8f, blockLayer))
             {
                 BaseEntity entity = hitinfo.GetEntity();
+                //DoLog($"Found {entity.ShortPrefabName}");
                 if (entity.ShortPrefabName.Equals("foundation") || entity.ShortPrefabName.Equals("floor")
                     || entity.ShortPrefabName.Equals("foundation.triangle") || entity.ShortPrefabName.Equals("floor.triangle")
                     || position.y < entity.WorldSpaceBounds().ToBounds().max.y)
@@ -1599,7 +1654,7 @@ namespace Oxide.Plugins
                 return true;
             }
 
-            return false;
+            return true;
         }
 
         // Check that a building block is owned by/attached to a cupboard and that the user has privileges
@@ -1763,6 +1818,7 @@ namespace Oxide.Plugins
                 marker.color1 = Color.green;
                 marker.color2 = Color.white;
                 marker.name = "town";
+                marker.appType = ProtoBuf.AppMarkerType.Player;
                 marker.radius = 0.2f;
                 marker.Spawn();
                 marker.SendUpdate();
@@ -1774,8 +1830,21 @@ namespace Oxide.Plugins
             return Regex.Replace(str, "[^a-zA-Z0-9_.]+", "", RegexOptions.Compiled);
         }
 
-        private static BasePlayer FindPlayerByName(string name)
+        private static BasePlayer FindPlayerByName(string name, bool includeSleepers=false)
         {
+            if (includeSleepers)
+            {
+                foreach (BasePlayer current in BasePlayer.allPlayerList)
+                {
+                    if (current.displayName.Equals(name, StringComparison.OrdinalIgnoreCase)
+                    || current.UserIDString.Contains(name, CompareOptions.OrdinalIgnoreCase)
+                    || current.displayName.Contains(name, CompareOptions.OrdinalIgnoreCase))
+                    {
+                        return current;
+                    }
+                }
+                return null;
+            }
             foreach (BasePlayer current in BasePlayer.activePlayerList)
             {
                 if (current.displayName.Equals(name, StringComparison.OrdinalIgnoreCase)
@@ -1788,8 +1857,19 @@ namespace Oxide.Plugins
             return null;
         }
 
-        private static BasePlayer FindPlayerById(ulong userid)
+        private static BasePlayer FindPlayerById(ulong userid, bool includeSleepers=false)
         {
+            if (includeSleepers)
+            {
+                foreach (BasePlayer current in BasePlayer.allPlayerList)
+                {
+                    if (current.userID == userid)
+                    {
+                        return current;
+                    }
+                }
+                return null;
+            }
             foreach (BasePlayer current in BasePlayer.activePlayerList)
             {
                 if (current.userID == userid)
@@ -1870,177 +1950,6 @@ namespace Oxide.Plugins
             }
         }
 
-        //public void AutoSpawnTown()
-        //{
-        //    Puts("Running AutoSpawnTown");
-        //    if (CopyPaste != null && !string.IsNullOrEmpty(configData.Options.TownCopyPasteString))
-        //    {
-        //        Puts($"Finding Town Position for {configData.Options.TownCopyPasteString}");
-        //       //ServerMgr.Instance.StartCoroutine(FindTownPosition());
-        //        FindTownPosition();
-        //        if (townPositions.Count > 0)
-        //        {
-        //            int pos = UnityEngine.Random.Range(0, townPositions.Count);
-        //            Puts($"Trying to paste {configData.Options.TownCopyPasteString} as new town at {townPositions[pos].ToString()} with zoneid {configData.Options.TownZoneId}");
-        //            //CopyPaste.Call("TryPaste", townPositions[pos], configData.Options.TownCopyPasteString, null, 0f, new string[] { "autoheight", "true", "stability", "true", "deployables", "true", "inventories", "true", "entityowner", "true" });
-        //            CopyPaste.Call("TryPasteFromVector3", townPositions[pos], 0f, configData.Options.TownCopyPasteString, new string[] { "autoheight", "true", "stability", "true", "deployables", "true", "inventories", "true", "entityowner", "true" }, null);
-
-        //            RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('town', '{townPositions[pos].ToString()}')");
-
-        //            string[] args = { "name", "Town", "radius", "150" };
-        //            ZoneManager?.Call("CreateOrUpdateZone", configData.Options.TownZoneId, args, townPositions[pos]);
-
-        //            if (configData.Options.AddTownMapMarker)
-        //            {
-        //                foreach (MapMarkerGenericRadius mm in UnityEngine.Object.FindObjectsOfType<MapMarkerGenericRadius>().Where(x => x.name == "town").ToList())
-        //                {
-        //                    mm.Kill();
-        //                }
-        //                MapMarkerGenericRadius marker = GameManager.server.CreateEntity("assets/prefabs/tools/map/genericradiusmarker.prefab", townPositions[pos]) as MapMarkerGenericRadius;
-        //                if (marker != null)
-        //                {
-        //                    marker.alpha = 0.6f;
-        //                    marker.color1 = Color.green;
-        //                    marker.color2 = Color.white;
-        //                    marker.name = "town";
-        //                    marker.radius = 0.2f;
-        //                    marker.Spawn();
-        //                    marker.SendUpdate();
-        //                }
-        //            }
-
-        //            //timer.Once(20f, () => LootProtect?.Call("ShareBuilding", townPositions[pos], configData.Options.TownCopyPasteOwnerID));
-        //            //NextTick(() =>
-        //            //{
-        //            //    Puts($"Trying to share items in town at {townPositions[pos].ToString()}");
-        //            //    LootProtect?.Call("ShareBuilding", townPositions[pos], configData.Options.TownCopyPasteOwnerID);
-        //            //});
-
-        //            return;
-        //        }
-        //        Puts("Unable to automatically set town :(");
-        //    }
-        //}
-
-        //private IEnumerator FindTownPosition(int max = 10)
-        private void FindTownPosition(int max = 500)
-        {
-            List<Vector3> locations = Pool.GetList<Vector3>();
-            float mapSizeX = TerrainMeta.Size.x / 2;
-            float mapSizeZ = TerrainMeta.Size.z / 2;
-            Vector3 rand = Vector3.zero;
-            for (int i = 0; i < max; i++)
-            {
-                rand.x = UnityEngine.Random.Range(-mapSizeX, mapSizeX);
-                rand.z = UnityEngine.Random.Range(-mapSizeZ, mapSizeZ);
-                rand.y = TerrainMeta.HeightMap.GetHeight(rand);
-                if (ValidTownPosition(ref rand))
-                {
-                    locations.Add(rand);
-                }
-
-                //if (i % 20 == 0)
-                //{
-                //    yield return CoroutineEx.waitForEndOfFrame;
-                //}
-            }
-
-            Puts($"Found {locations.Count} possible town positions");
-            townPositions.AddRange(locations);
-            Pool.FreeList(ref locations);
-            //townPositionsC = null;
-        }
-
-        public bool ValidTownPosition(ref Vector3 pos)
-        {
-            //Puts($"Checking position {pos.ToString()}, biome {GetBiome(pos).ToString()}, terrain {Enum.Parse(typeof(TerrainTopology), GetTopology(pos).ToString(), true)}");
-            Puts($"Checking position {pos}");
-
-            float sl = GetSlope(pos);
-            if (0 > sl || sl > 30)
-            {
-                Puts($"Bad slope: {Math.Abs(sl)} degrees");
-                return false;
-            }
-            if (GetWater(pos) > 1)
-            {
-                Puts("In the water :(");
-                return false;
-            }
-
-            TerrainSplat.Enum sp = GetSplat(pos);
-            if (sp != TerrainSplat.Enum.Dirt
-                && sp != TerrainSplat.Enum.Grass
-                && sp != TerrainSplat.Enum.Gravel
-                && sp != TerrainSplat.Enum.Sand
-                && sp != TerrainSplat.Enum.Snow)
-            {
-                Puts("Bad splat position :(");
-                return false;
-            }
-
-            RaycastHit hitinfo;
-            bool x = Physics.Raycast(pos, Vector3.down, out hitinfo, 5f, LayerMask.GetMask("Terrain"));
-            if (!x)
-            {
-                Puts("Not above terrain :(");
-                return false;
-            }
-            else if (hitinfo.collider.name.IndexOf("road", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                Puts("Above road :(");
-                return false;
-            }
-            else if (hitinfo.collider.name.IndexOf("water", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                Puts("Above water :(");
-                return false;
-            }
-
-            foreach (KeyValuePair<string, Vector3> entry in monPos)
-            {
-                string monname = entry.Key;
-                Vector3 monvector = entry.Value;
-                const float realDistance = 300f;
-                monvector.y = pos.y;
-                float dist = Vector3.Distance(pos, monvector);
-
-                DoLog($"Checking {monname} dist: {dist}, realDistance: {realDistance}");
-                if (dist < realDistance)
-                {
-                    Puts($"Too close to {monname}");
-                    return false;
-                }
-            }
-
-            bool enabled;
-            Dictionary<TerrainBiome.Enum, bool> biomes = new Dictionary<TerrainBiome.Enum, bool>
-            {
-                { TerrainBiome.Enum.Arctic, false },
-                { TerrainBiome.Enum.Arid, true },
-                { TerrainBiome.Enum.Temperate, true },
-                { TerrainBiome.Enum.Tundra, false}
-            };
-
-            TerrainBiome.Enum tp = GetBiome(pos);
-            if (biomes.TryGetValue(tp, out enabled) && enabled)
-            {
-                Puts("Good Biome!");
-                return true;
-            }
-            else
-            {
-                Puts("BAD Biome :(");
-                return false;
-            }
-        }
-
-        private static float GetSlope(Vector3 pos) => TerrainMeta.HeightMap.GetSlope(pos);
-        private static float GetWater(Vector3 pos) => TerrainMeta.WaterMap.GetHeight(pos);
-        private static TerrainBiome.Enum GetBiome(Vector3 pos) => (TerrainBiome.Enum)TerrainMeta.BiomeMap.GetBiomeMaxType(pos);
-        private static TerrainSplat.Enum GetSplat(Vector3 pos) => (TerrainSplat.Enum)TerrainMeta.SplatMap.GetSplatMaxType(pos);
-        private static TerrainTopology.Enum GetTopology(Vector3 pos) => (TerrainTopology.Enum)TerrainMeta.TopologyMap.GetTopology(pos);
-
         public void FindMonuments()
         {
             Vector3 extents = Vector3.zero;
@@ -2081,6 +1990,7 @@ namespace Oxide.Plugins
                         name = Regex.Match(monument.name, @"\w{6}\/(.+\/)(.+)\.(.+)").Groups[2].Value.Replace("_", " ").Replace(" 1", "").Titleize();
                     }
                 }
+                //Puts($"Checking monument {name}");
                 if (monPos.ContainsKey(name)) continue;
                 if (cavePos.ContainsKey(name)) name += RandomString();
 
@@ -2097,7 +2007,7 @@ namespace Oxide.Plugins
                 }
                 else if (monument.name.Contains("compound") && configData.Options.AutoGenOutpost)
                 {
-                    DoLog("  Adding Outpost target");
+                    DoLog($"  Adding Outpost target pos: {monument.transform.position}, size: {extents}");
                     Vector3 mt = Vector3.zero;
                     Vector3 bbq = Vector3.zero;
                     List<BaseEntity> ents = new List<BaseEntity>();
@@ -2121,7 +2031,7 @@ namespace Oxide.Plugins
                 }
                 else if (monument.name.Contains("bandit") && configData.Options.AutoGenBandit)
                 {
-                    DoLog("  Adding BanditTown target");
+                    DoLog($"  Adding BanditTown target pos: {monument.transform.position}, size: {extents}");
                     List<BaseEntity> ents = new List<BaseEntity>();
                     Vis.Entities(monument.transform.position, 50, ents);
                     foreach (BaseEntity entity in ents)
@@ -2141,7 +2051,7 @@ namespace Oxide.Plugins
                     }
                     monPos.Add(name, monument.transform.position);
                     monSize.Add(name, extents);
-                    //DoLog($"Adding Monument: {name}, pos: {monument.transform.position.ToString()}, size: {extents.ToString()}");
+                    DoLog($"Adding Monument: {name}, pos: {monument.transform.position}, size: {extents}");
                     if (name.Contains("Entrance Bunker") && configData.Options.AutoGenTunnels)
                     {
                         Vector3 pos = monument.transform.position;
@@ -2269,6 +2179,7 @@ namespace Oxide.Plugins
 
         public void AddTimer(BasePlayer player, Vector3 targetLoc, string type, string typeName)
         {
+            //AddTimer(iplayer.Object as BasePlayer, target.transform.position, "TPR", iplayer.Name);
             DoLog($"Creating a {type} Countdown TPTimer object for {player.UserIDString}.");
             TeleportTimers.Add(
                 player.userID,
@@ -2548,6 +2459,24 @@ namespace Oxide.Plugins
                 }
             }
 
+            // No money via Economics nor ServerRewards, or plugins not in use.  Try BankSystem.
+            if (configData.Options.useBankSystem && BankSystem)
+            {
+                object bal = BankSystem?.Call("Balance", ulong.Parse(userid));
+                balance = Convert.ToDouble(bal);
+                if (balance >= bypass)
+                {
+                    hasmoney = true;
+                    if (withdraw)
+                    {
+                        return (bool)BankSystem?.Call("Withdraw", userid, (int)bypass);
+                    }
+                    else if (deposit)
+                    {
+                        bool w = (bool)BankSystem?.Call("Deposit", userid, (int)bypass);
+                    }
+                }
+            }
             // Just checking balance without withdrawal or deposit - did we find anything?
             return hasmoney;
         }
@@ -2803,6 +2732,7 @@ namespace Oxide.Plugins
             public bool useTeams;
             public bool useEconomics;
             public bool useServerRewards;
+            public bool useBankSystem;
             public bool useNoEscape;
             public bool useVanish;
             public bool HomeRequireFoundation;
@@ -3291,7 +3221,7 @@ namespace Oxide.Plugins
 
             private static bool HasCompatibleInterface(Type objectType)
             {
-                return objectType.GetInterfaces().Any(i => HasGenericTypeDefinition(i, typeof(IDictionary<,>)) && typeof(T).IsAssignableFrom(i.GetGenericArguments().First()));
+                return objectType.GetInterfaces().Any(i => HasGenericTypeDefinition(i, typeof(IDictionary<,>)) && typeof(T).IsAssignableFrom(i.GetGenericArguments().FirstOrDefault()));
             }
 
             private static bool HasGenericTypeDefinition(Type objectType, Type typeDefinition)
