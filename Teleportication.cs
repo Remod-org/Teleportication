@@ -40,7 +40,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.4.8")]
+    [Info("Teleportication", "RFC1920", "1.4.9")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -85,6 +85,7 @@ namespace Oxide.Plugins
         private readonly Plugin Friends, Clans, Economics, ServerRewards, GridAPI, NoEscape, Vanish, ZoneManager, BankSystem;//, CopyPaste, LootProtect;
 
         private readonly int blockLayer = LayerMask.GetMask("Construction");
+        private readonly int groundLayer = LayerMask.GetMask("Terrain", "World");
 
         public class TPTimer
         {
@@ -279,6 +280,7 @@ namespace Oxide.Plugins
                 ["onmounted"] = "You cannot use /{0} while mounted.",
                 ["onswimming"] = "You cannot use /{0} while swimming.",
                 ["onwater"] = "You cannot use /{0} above water.",
+                ["oniceberg"] = "You cannot use /{0} on an iceberg.",
                 ["intunnel"] = "You cannot use /{0} to/from the tunnel system.",
                 ["safezone"] = "You cannot use /{0} from a safe zone.",
                 ["remaining"] = "You have {0} {1} teleports remaining for today.",
@@ -1129,7 +1131,7 @@ namespace Oxide.Plugins
                     {
                         if (configData.Options.debug)
                         {
-                            Puts("Allowing tpr to self in debug mode.");
+                            DoLog("Allowing tpr to self in debug mode.");
                         }
                         else
                         {
@@ -1142,7 +1144,7 @@ namespace Oxide.Plugins
                         if (IsFriend(requesterId, targetId))
                         {
                             DoLog("AutoTPA!");
-                            if (TeleportTimers.ContainsKey(requesterId)) TeleportTimers.Remove(requesterId);
+                            //if (TeleportTimers.ContainsKey(requesterId)) TeleportTimers.Remove(requesterId);
                             AddTimer(iplayer.Object as BasePlayer, target.transform.position, "TPR", iplayer.Name);
                             //TeleportTimers.Add(sourceId, new TPTimer() { type = "TPR", start = Time.realtimeSinceStartup, countdown = configData.Types["TPR"].CountDown, source = (iplayer.Object as BasePlayer), targetName = iplayer.Name, targetLocation = target.transform.position });
                             HandleTimer(requesterId, "TPR", true);
@@ -1204,6 +1206,10 @@ namespace Oxide.Plugins
             if (target.Count == 0) return false;
 
             RunUpdateQuery($"INSERT OR REPLACE INTO rtp_server VALUES('{name}', '{location}')");
+            if (configData.Options.AddTownMapMarker)
+            {
+                SetTownMapMarker(location);
+            }
             return true;
         }
 
@@ -1294,10 +1300,12 @@ namespace Oxide.Plugins
 
         private void TPRNotification(bool reject = false)
         {
+            DoLog("TPRNotification");
             foreach (KeyValuePair<ulong, ulong> req in TPRRequests)
             {
                 if (TPRTimers.ContainsKey(req.Key))
                 {
+                    DoLog($"Found a TPR timer for {req.Key} teleporting to {req.Value}");
                     BasePlayer src = FindPlayerById(req.Key);
                     BasePlayer tgt = FindPlayerById(req.Value);
                     if (reject && src != null && tgt != null)
@@ -1441,6 +1449,11 @@ namespace Oxide.Plugins
                 Message(player.IPlayer, "onwater", type.ToLower());
                 return false;
             }
+            //if (configData.Types[type].BlockOnIceberg && AboveIceberg(player))
+            //{
+            //    Message(player.IPlayer, "oniceberg", type.ToLower());
+            //    return false;
+            //}
 
             // CONDITION
             if (configData.Types[type].BlockOnSwimming && player.IsSwimming())
@@ -1724,6 +1737,23 @@ namespace Oxide.Plugins
             return false;
         }
 
+        public bool AboveIceberg(BasePlayer player)
+        {
+            Vector3 pos = player.transform.position;
+            DoLog($"Player position: {pos}.  Checking for iceberg...");
+
+            RaycastHit hitinfo;
+            if (Physics.Raycast(pos + new Vector3(0, 0.5f, 0), Vector3.down, out hitinfo, 0.8f, groundLayer))
+            {
+                if (hitinfo.collider.name.Contains("iceberg"))
+                {
+                    DoLog("Player is above iceberg");
+                    return true;
+                }
+            }
+            return false;
+        }
+
         public bool AboveWater(BasePlayer player)
         {
             Vector3 pos = player.transform.position;
@@ -1807,6 +1837,7 @@ namespace Oxide.Plugins
         #region helpers
         private void SetTownMapMarker(Vector3 position)
         {
+            Puts("Setting town map marker");
             foreach (MapMarkerGenericRadius mm in UnityEngine.Object.FindObjectsOfType<MapMarkerGenericRadius>().Where(x => x.name == "town").ToList())
             {
                 mm?.Kill();
@@ -1960,6 +1991,7 @@ namespace Oxide.Plugins
             foreach (MonumentInfo monument in UnityEngine.Object.FindObjectsOfType<MonumentInfo>())
             {
                 if (monument.name.Contains("power_sub")) continue;
+                if (monument.name.Contains("ice_lake")) continue;
                 realWidth = 0f;
                 name = null;
 
@@ -2144,6 +2176,7 @@ namespace Oxide.Plugins
         // playerid = requesting player, ownerid = target or owner of a home
         private bool IsFriend(ulong playerid, ulong ownerid)
         {
+            if (playerid == ownerid) return true;
             if (configData.Options.useFriends && Friends != null)
             {
                 object fr = Friends?.CallHook("AreFriends", playerid, ownerid);
@@ -2781,6 +2814,7 @@ namespace Oxide.Plugins
             public bool BlockOnMounted;
             public bool BlockOnSwimming;
             public bool BlockOnWater;
+            //public bool BlockOnIceberg;
             public bool BlockForNoEscape;
             public bool BlockIfInvisible;
             public bool BlockInTunnel = true;
