@@ -40,7 +40,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.4.9")]
+    [Info("Teleportication", "RFC1920", "1.5.0")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -215,6 +215,7 @@ namespace Oxide.Plugins
         {
             foreach (BasePlayer player in BasePlayer.activePlayerList)
             {
+                if (player ==  null) continue;
                 CuiHelper.DestroyUi(player, HGUI);
             }
             sqlConnection.Close();
@@ -679,6 +680,8 @@ namespace Oxide.Plugins
                 // List homes
                 string available = Lang("homesavail") + "\n";
                 bool hashomes = false;
+                List<Vector3> allhomes = new List<Vector3>();
+                string firstHome = string.Empty;
                 using (SQLiteConnection c = new SQLiteConnection(connStr))
                 {
                     c.Open();
@@ -705,12 +708,37 @@ namespace Oxide.Plugins
                                     available += test + ": " + position + " [" + pos + "] " + Lang("lastused", null, timesince) + "\n";
                                 }
                                 hashomes = true;
+                                allhomes.Add(position);
+                                firstHome = test;
                             }
                         }
                     }
                 }
                 if (hashomes)
                 {
+                    if (allhomes.Count == 1 && CanTeleport(player, allhomes[0].ToString(), "Home") && configData.Types["Home"].IfOneHomeJustGoThere)
+                    {
+                        if (!TeleportTimers.ContainsKey(player.userID))
+                        {
+                            AddTimer(player, allhomes[0], "Home", "Home");
+                            HandleTimer(player.userID, "Home", true);
+                            CreateCooldown(iplayer.Object as BasePlayer, "Home");
+
+                            if (!DailyUsage["Home"].ContainsKey(player.userID)) DailyUsage["Home"].Add(player.userID, 0);
+                            float usage = GetDailyLimit(player.userID, "Home") - DailyUsage["Home"][player.userID];
+                            if (usage > 0)
+                            {
+                                Message(iplayer, "remaining", usage.ToString(), "Home");
+                            }
+
+                            Message(iplayer, "teleportinghome", firstHome + "(" + RemoveSpecialCharacters(firstHome) + ")", configData.Types["Home"].CountDown.ToString());
+                        }
+                        else if (TeleportTimers[player.userID].cooldown == 0)
+                        {
+                            Teleport(player, allhomes[0], "home");
+                        }
+                        return;
+                    }
                     Message(iplayer, available);
                 }
                 else
@@ -2798,6 +2826,7 @@ namespace Oxide.Plugins
 
         public class CmdOptions : VIPOptions
         {
+            public bool IfOneHomeJustGoThere;
             public bool BlockOnCrafting;
             public bool BlockOnHurt;
             public bool BlockOnCold;
