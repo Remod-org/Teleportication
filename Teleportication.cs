@@ -40,7 +40,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.5.0")]
+    [Info("Teleportication", "RFC1920", "1.5.1")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -160,10 +160,10 @@ namespace Oxide.Plugins
         private void Init()
         {
             // Dummy file, creates the directory for us.
-            DynamicConfigFile dataFile = Interface.Oxide.DataFileSystem.GetDatafile(Name + "/teleportication");
+            DynamicConfigFile dataFile = Interface.GetMod().DataFileSystem.GetDatafile(Name + "/teleportication");
             dataFile.Save();
-            //connStr = $"Data Source={Path.Combine(Interface.Oxide.DataDirectory, Name, "teleportication.db")};";
-            connStr = $"Data Source={Interface.Oxide.DataDirectory}{Path.DirectorySeparatorChar}{Name}{Path.DirectorySeparatorChar}teleportication.db;";
+            connStr = $"Data Source={Path.Combine(Interface.GetMod().DataDirectory, Name, "teleportication.db")};";
+            //connStr = $"Data Source={Interface.GetMod().DataDirectory}{Path.DirectorySeparatorChar}{Name}{Path.DirectorySeparatorChar}teleportication.db;";
 
             CooldownTimers.Add("Home", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("Town", new Dictionary<ulong, TPTimer>());
@@ -492,7 +492,7 @@ namespace Oxide.Plugins
                             try
                             {
                                 // Get user homes from data file
-                                DynamicConfigFile tpfile = Interface.Oxide.DataFileSystem.GetFile(otpplug + "Home");
+                                DynamicConfigFile tpfile = Interface.GetMod().DataFileSystem.GetFile(otpplug + "Home");
                                 tpfile.Settings.NullValueHandling = NullValueHandling.Ignore;
                                 tpfile.Settings.Converters = new JsonConverter[] { new UnityVector3Converter(), new CustomComparerDictionaryCreationConverter<string>(StringComparer.OrdinalIgnoreCase) };
                                 foreach (KeyValuePair<ulong, HomeData> userHomes in tpfile.ReadObject<Dictionary<ulong, HomeData>>())
@@ -520,7 +520,7 @@ namespace Oxide.Plugins
                             try
                             {
                                 // Get town location from config
-                                DataFileSystem d = new DataFileSystem(Interface.Oxide.ConfigDirectory);
+                                DataFileSystem d = new DataFileSystem(Interface.GetMod().ConfigDirectory);
                                 string[] x = d.GetFiles("", $"{otpplug}.json");
                                 OtherConfigData otpcfg = d.GetFile(otpplug).ReadObject<OtherConfigData>();
                                 string townloc = otpcfg.Town.Location.Replace("  ", "").Replace(" ", ",");
@@ -646,7 +646,7 @@ namespace Oxide.Plugins
                         {
                             c.Open();
                             //string bkup = $"Data Source={Path.Combine(Interface.Oxide.DataDirectory, Name, backupfile)};";
-                            string bkup = $"Data Source={Interface.Oxide.DataDirectory}{Path.DirectorySeparatorChar}{Name}{Path.DirectorySeparatorChar}{backupfile};";
+                            string bkup = $"Data Source={Interface.GetMod().DataDirectory}{Path.DirectorySeparatorChar}{Name}{Path.DirectorySeparatorChar}{backupfile};";
                             using (SQLiteConnection d = new SQLiteConnection(bkup))
                             {
                                 d.Open();
@@ -2011,17 +2011,14 @@ namespace Oxide.Plugins
 
         public void FindMonuments()
         {
-            Vector3 extents = Vector3.zero;
-            float realWidth = 0f;
-            string name = null;
             bool ishapis = ConVar.Server.level.Contains("Hapis");
 
             foreach (MonumentInfo monument in UnityEngine.Object.FindObjectsOfType<MonumentInfo>())
             {
                 if (monument.name.Contains("power_sub")) continue;
                 if (monument.name.Contains("ice_lake")) continue;
-                realWidth = 0f;
-                name = null;
+                float realWidth = 0f;
+                string name = string.Empty;
 
                 if (monument.name == "OilrigAI")
                 {
@@ -2032,6 +2029,11 @@ namespace Oxide.Plugins
                 {
                     name = "Large Oilrig";
                     realWidth = 200f;
+                }
+                else if (monument.name == "assets/bundled/prefabs/autospawn/monument/medium/radtown_small_3.prefab")
+                {
+                    name = "Sewer Branch";
+                    realWidth = 100;
                 }
                 else
                 {
@@ -2054,7 +2056,7 @@ namespace Oxide.Plugins
                 if (monPos.ContainsKey(name)) continue;
                 if (cavePos.ContainsKey(name)) name += RandomString();
 
-                extents = monument.Bounds.extents;
+                Vector3 extents = monument.Bounds.extents;
                 if (realWidth > 0f)
                 {
                     extents.z = realWidth;
@@ -2603,7 +2605,8 @@ namespace Oxide.Plugins
             player.StartSleeping();
             player.SendNetworkUpdateImmediate(false);
 
-            if (player.net?.connection != null) player.ClientRPCPlayer(null, player, "StartLoading");
+            //if (player.net?.connection != null) player.ClientRPCPlayer(null, player, "StartLoading");
+            if (player.net?.connection != null) player.ClientRPC(RpcTarget.Player("StartLoading", player));
         }
 
         private void StartSleeping(BasePlayer player)
@@ -3038,7 +3041,8 @@ namespace Oxide.Plugins
                             Command = command + text,
                             FontSize = size,
                             IsPassword = false,
-                            Text = text
+                            Text = text,
+                            NeedsKeyboard = true
                         },
                         new CuiRectTransformComponent { AnchorMin = min, AnchorMax = max },
                         new CuiNeedsCursorComponent()
