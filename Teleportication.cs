@@ -20,6 +20,7 @@
     Optionally you can also view the license at <http://www.gnu.org/licenses/>.
 */
 #endregion License (GPL v2)
+// Reference: Mono.Data.Sqlite
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
@@ -31,7 +32,7 @@ using Oxide.Game.Rust.Cui;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Data.SQLite;
+using Mono.Data.Sqlite;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -40,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.5.1")]
+    [Info("Teleportication", "RFC1920", "1.5.2")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -75,7 +76,7 @@ namespace Oxide.Plugins
         private const string permTP_Admin = "teleportication.admin";
 
         private ConfigData configData;
-        private SQLiteConnection sqlConnection;
+        private SqliteConnection sqlConnection;
         public TextInfo TI = CultureInfo.CurrentCulture.TextInfo;
         private string connStr;
 
@@ -116,7 +117,7 @@ namespace Oxide.Plugins
         #region init
         private void OnServerInitialized()
         {
-            sqlConnection = new SQLiteConnection(connStr);
+            sqlConnection = new SqliteConnection(connStr);
             sqlConnection.Open();
 
             LoadData();
@@ -281,6 +282,7 @@ namespace Oxide.Plugins
                 ["onmounted"] = "You cannot use /{0} while mounted.",
                 ["onswimming"] = "You cannot use /{0} while swimming.",
                 ["onwater"] = "You cannot use /{0} above water.",
+                ["onboat"] = "You cannot use /{0} on a tugboat.",
                 ["oniceberg"] = "You cannot use /{0} on an iceberg.",
                 ["intunnel"] = "You cannot use /{0} to/from the tunnel system.",
                 ["safezone"] = "You cannot use /{0} from a safe zone.",
@@ -311,11 +313,11 @@ namespace Oxide.Plugins
         private void LoadData()
         {
             bool found = false;
-            using (SQLiteConnection c = new SQLiteConnection(connStr))
+            using (SqliteConnection c = new SqliteConnection(connStr))
             {
                 c.Open();
-                using (SQLiteCommand r = new SQLiteCommand("SELECT name FROM sqlite_master WHERE type='table' AND name='rtp_server'", c))
-                using (SQLiteDataReader rtbl = r.ExecuteReader())
+                using (SqliteCommand r = new SqliteCommand("SELECT name FROM sqlite_master WHERE type='table' AND name='rtp_server'", c))
+                using (SqliteDataReader rtbl = r.ExecuteReader())
                 {
                     while (rtbl.Read()) { found = true; }
                 }
@@ -553,11 +555,11 @@ namespace Oxide.Plugins
                         Message(iplayer, Title);
                         Message(iplayer, "locations");
                         string loc = null;
-                        using (SQLiteConnection c = new SQLiteConnection(connStr))
+                        using (SqliteConnection c = new SqliteConnection(connStr))
                         {
                             c.Open();
-                            using (SQLiteCommand q = new SQLiteCommand("SELECT name, location FROM rtp_server ORDER BY name", c))
-                            using (SQLiteDataReader svr = q.ExecuteReader())
+                            using (SqliteCommand q = new SqliteCommand("SELECT name, location FROM rtp_server ORDER BY name", c))
+                            using (SqliteDataReader svr = q.ExecuteReader())
                             {
                                 while (svr.Read())
                                 {
@@ -607,11 +609,11 @@ namespace Oxide.Plugins
                         }
                         output += "\nPLAYER HOMES:\n";
                         Dictionary<string, int> pCount = new Dictionary<string, int>();
-                        using (SQLiteConnection c = new SQLiteConnection(connStr))
+                        using (SqliteConnection c = new SqliteConnection(connStr))
                         {
                             c.Open();
-                            using (SQLiteCommand q = new SQLiteCommand("SELECT userid FROM rtp_player ORDER BY userid", c))
-                            using (SQLiteDataReader svr = q.ExecuteReader())
+                            using (SqliteCommand q = new SqliteCommand("SELECT userid FROM rtp_player ORDER BY userid", c))
+                            using (SqliteDataReader svr = q.ExecuteReader())
                             {
                                 while (svr.Read())
                                 {
@@ -642,17 +644,14 @@ namespace Oxide.Plugins
                         {
                             backupfile = args[1] + ".db";
                         }
-                        using (SQLiteConnection c = new SQLiteConnection(connStr))
+                        using (SqliteConnection c = new SqliteConnection(connStr))
                         {
                             c.Open();
-                            //string bkup = $"Data Source={Path.Combine(Interface.Oxide.DataDirectory, Name, backupfile)};";
-                            string bkup = $"Data Source={Interface.GetMod().DataDirectory}{Path.DirectorySeparatorChar}{Name}{Path.DirectorySeparatorChar}{backupfile};";
-                            using (SQLiteConnection d = new SQLiteConnection(bkup))
-                            {
-                                d.Open();
-                                c.BackupDatabase(d, "main", "main", -1, null, -1);
-                            }
-                            c.Close();
+                            string file = $"{Interface.GetMod().DataDirectory}{Path.DirectorySeparatorChar}{Name}{Path.DirectorySeparatorChar}{backupfile}";
+                            SqliteConnection.CreateFile(file);
+                            SqliteCommand cmd = c.CreateCommand();
+                            cmd.CommandText = $"VACUUM INTO '{file}'";
+                            cmd.ExecuteNonQuery();
                             Message(iplayer, "BackupDone", backupfile);
                         }
                         break;
@@ -682,13 +681,13 @@ namespace Oxide.Plugins
                 bool hashomes = false;
                 List<Vector3> allhomes = new List<Vector3>();
                 string firstHome = string.Empty;
-                using (SQLiteConnection c = new SQLiteConnection(connStr))
+                using (SqliteConnection c = new SqliteConnection(connStr))
                 {
                     c.Open();
                     string qh = $"SELECT name, location, lastused FROM rtp_player WHERE userid='{player.userID}'";
                     //Puts(qh);
-                    using (SQLiteCommand q = new SQLiteCommand(qh, c))
-                    using (SQLiteDataReader home = q.ExecuteReader())
+                    using (SqliteCommand q = new SqliteCommand(qh, c))
+                    using (SqliteDataReader home = q.ExecuteReader())
                     {
                         while (home.Read())
                         {
@@ -754,11 +753,11 @@ namespace Oxide.Plugins
                 {
                     string available = Lang("homesavailfor", null, RemoveSpecialCharacters(target.displayName)) + "\n";
                     bool hashomes = false;
-                    using (SQLiteConnection c = new SQLiteConnection(connStr))
+                    using (SqliteConnection c = new SqliteConnection(connStr))
                     {
                         c.Open();
-                        using (SQLiteCommand q = new SQLiteCommand($"SELECT name, location, lastused FROM rtp_player WHERE userid='{target.userID}'", c))
-                        using (SQLiteDataReader home = q.ExecuteReader())
+                        using (SqliteCommand q = new SqliteCommand($"SELECT name, location, lastused FROM rtp_player WHERE userid='{target.userID}'", c))
+                        using (SqliteDataReader home = q.ExecuteReader())
                         {
                             while (home.Read())
                             {
@@ -796,13 +795,13 @@ namespace Oxide.Plugins
                 {
                     string home = args[1];
                     bool found = false;
-                    using (SQLiteConnection c = new SQLiteConnection(connStr))
+                    using (SqliteConnection c = new SqliteConnection(connStr))
                     {
                         c.Open();
                         string q = $"SELECT name FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'";
                         DoLog(q);
-                        using (SQLiteCommand ct = new SQLiteCommand(q, c))
-                        using (SQLiteDataReader pl = ct.ExecuteReader())
+                        using (SqliteCommand ct = new SqliteCommand(q, c))
+                        using (SqliteDataReader pl = ct.ExecuteReader())
                         {
                             while (pl.Read())
                             {
@@ -1268,12 +1267,12 @@ namespace Oxide.Plugins
 
             Dictionary<string, Vector3> targets = new Dictionary<string, Vector3>();
 
-            using (SQLiteConnection c = new SQLiteConnection(connStr))
+            using (SqliteConnection c = new SqliteConnection(connStr))
             {
                 c.Open();
                 const string qh = "SELECT name, location, FROM rtp_server";
-                using (SQLiteCommand q = new SQLiteCommand(qh, c))
-                using (SQLiteDataReader tgts = q.ExecuteReader())
+                using (SqliteCommand q = new SqliteCommand(qh, c))
+                using (SqliteDataReader tgts = q.ExecuteReader())
                 {
                     while (tgts.Read())
                     {
@@ -2154,10 +2153,10 @@ namespace Oxide.Plugins
 
         private bool RunUpdateQuery(string query)
         {
-            using (SQLiteConnection c = new SQLiteConnection(connStr))
+            using (SqliteConnection c = new SqliteConnection(connStr))
             {
                 c.Open();
-                using (SQLiteCommand cmd = new SQLiteCommand(query, c))
+                using (SqliteCommand cmd = new SqliteCommand(query, c))
                 {
                     cmd.ExecuteNonQuery();
                 }
@@ -2169,11 +2168,11 @@ namespace Oxide.Plugins
         {
             DoLog($"QuerySingleStringToList:\n  {query}");
             List<string> output = new List<string>();
-            using (SQLiteConnection c = new SQLiteConnection(connStr))
+            using (SqliteConnection c = new SqliteConnection(connStr))
             {
                 c.Open();
-                using (SQLiteCommand q = new SQLiteCommand(query, c))
-                using (SQLiteDataReader rtbl = q.ExecuteReader())
+                using (SqliteCommand q = new SqliteCommand(query, c))
+                using (SqliteDataReader rtbl = q.ExecuteReader())
                 {
                     while (rtbl.Read())
                     {
@@ -2605,7 +2604,6 @@ namespace Oxide.Plugins
             player.StartSleeping();
             player.SendNetworkUpdateImmediate(false);
 
-            //if (player.net?.connection != null) player.ClientRPCPlayer(null, player, "StartLoading");
             if (player.net?.connection != null) player.ClientRPC(RpcTarget.Player("StartLoading", player));
         }
 
@@ -2627,22 +2625,22 @@ namespace Oxide.Plugins
 
             if (configData.Version < new VersionNumber(1, 1, 18))
             {
-                using (SQLiteConnection c = new SQLiteConnection(connStr))
+                using (SqliteConnection c = new SqliteConnection(connStr))
                 {
                     c.Open();
-                    using (SQLiteCommand ct = new SQLiteCommand("CREATE TABLE new_player (userid VARCHAR(255), name VARCHAR(255) NOT NULL, location VARCHAR(255), lastused VARCHAR(255), total INTEGER(32))", c))
+                    using (SqliteCommand ct = new SqliteCommand("CREATE TABLE new_player (userid VARCHAR(255), name VARCHAR(255) NOT NULL, location VARCHAR(255), lastused VARCHAR(255), total INTEGER(32))", c))
                     {
                         ct.ExecuteNonQuery();
                     }
-                    using (SQLiteCommand ct = new SQLiteCommand("INSERT INTO new_player SELECT * FROM rtp_player", c))
+                    using (SqliteCommand ct = new SqliteCommand("INSERT INTO new_player SELECT * FROM rtp_player", c))
                     {
                         ct.ExecuteNonQuery();
                     }
-                    using (SQLiteCommand ct = new SQLiteCommand("DROP TABLE IF EXISTS rtp_player", c))
+                    using (SqliteCommand ct = new SqliteCommand("DROP TABLE IF EXISTS rtp_player", c))
                     {
                         ct.ExecuteNonQuery();
                     }
-                    using (SQLiteCommand ct = new SQLiteCommand("ALTER TABLE new_player RENAME TO rtp_player", c))
+                    using (SqliteCommand ct = new SqliteCommand("ALTER TABLE new_player RENAME TO rtp_player", c))
                     {
                         ct.ExecuteNonQuery();
                     }
@@ -2905,12 +2903,12 @@ namespace Oxide.Plugins
             int col = 0;
             float[] posb = new float[4];
 
-            using (SQLiteConnection c = new SQLiteConnection(connStr))
+            using (SqliteConnection c = new SqliteConnection(connStr))
             {
                 c.Open();
                 string qh = $"SELECT name, location, lastused FROM rtp_player WHERE userid={player.userID}{append}";
-                using (SQLiteCommand q = new SQLiteCommand(qh, c))
-                using (SQLiteDataReader home = q.ExecuteReader())
+                using (SqliteCommand q = new SqliteCommand(qh, c))
+                using (SqliteDataReader home = q.ExecuteReader())
                 {
                     while (home.Read())
                     {
@@ -3313,21 +3311,21 @@ namespace Oxide.Plugins
         {
             if (drop)
             {
-                SQLiteCommand cd = new SQLiteCommand("DROP TABLE IF EXISTS rtp_server", sqlConnection);
+                SqliteCommand cd = new SqliteCommand("DROP TABLE IF EXISTS rtp_server", sqlConnection);
                 cd.ExecuteNonQuery();
-                cd = new SQLiteCommand("CREATE TABLE rtp_server (name VARCHAR(255) NOT NULL UNIQUE, location VARCHAR(255))", sqlConnection);
+                cd = new SqliteCommand("CREATE TABLE rtp_server (name VARCHAR(255) NOT NULL UNIQUE, location VARCHAR(255))", sqlConnection);
                 cd.ExecuteNonQuery();
 
-                cd = new SQLiteCommand("DROP TABLE IF EXISTS rtp_player", sqlConnection);
+                cd = new SqliteCommand("DROP TABLE IF EXISTS rtp_player", sqlConnection);
                 cd.ExecuteNonQuery();
-                cd = new SQLiteCommand("CREATE TABLE rtp_player (userid VARCHAR(255), name VARCHAR(255) NOT NULL, location VARCHAR(255), lastused VARCHAR(255), total INTEGER(32))", sqlConnection);
+                cd = new SqliteCommand("CREATE TABLE rtp_player (userid VARCHAR(255), name VARCHAR(255) NOT NULL, location VARCHAR(255), lastused VARCHAR(255), total INTEGER(32))", sqlConnection);
                 cd.ExecuteNonQuery();
             }
             else
             {
-                SQLiteCommand cd = new SQLiteCommand("DELETE FROM rtp_server", sqlConnection);
+                SqliteCommand cd = new SqliteCommand("DELETE FROM rtp_server", sqlConnection);
                 cd.ExecuteNonQuery();
-                cd = new SQLiteCommand("DELETE FROM rtp_player", sqlConnection);
+                cd = new SqliteCommand("DELETE FROM rtp_player", sqlConnection);
                 cd.ExecuteNonQuery();
             }
         }
