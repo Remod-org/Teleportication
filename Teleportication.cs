@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.5.2")]
+    [Info("Teleportication", "RFC1920", "1.5.3")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -164,7 +164,6 @@ namespace Oxide.Plugins
             DynamicConfigFile dataFile = Interface.GetMod().DataFileSystem.GetDatafile(Name + "/teleportication");
             dataFile.Save();
             connStr = $"Data Source={Path.Combine(Interface.GetMod().DataDirectory, Name, "teleportication.db")};";
-            //connStr = $"Data Source={Interface.GetMod().DataDirectory}{Path.DirectorySeparatorChar}{Name}{Path.DirectorySeparatorChar}teleportication.db;";
 
             CooldownTimers.Add("Home", new Dictionary<ulong, TPTimer>());
             CooldownTimers.Add("Town", new Dictionary<ulong, TPTimer>());
@@ -945,11 +944,12 @@ namespace Oxide.Plugins
                 {
                     case "town":
                         Message(iplayer, "townset", player.transform.position.ToString());
+                        Puts(player.transform.position.ToString());
                         if (configData.Options.AddTownMapMarker)
                         {
                             SetTownMapMarker(player.transform.position);
                         }
-                        if (configData.Options.TownZoneId.Length > 0)
+                        if (configData.Options.TownZoneId?.Length > 0)
                         {
                             string[] zone_args = { "name", "Town", "radius", "150" };
                             object ckzone = ZoneManager?.Call("CheckZoneID", configData.Options.TownZoneId);
@@ -1864,7 +1864,7 @@ namespace Oxide.Plugins
         #region helpers
         private void SetTownMapMarker(Vector3 position)
         {
-            Puts("Setting town map marker");
+            DoLog($"Setting town map marker at {position}");
             foreach (MapMarkerGenericRadius mm in UnityEngine.Object.FindObjectsOfType<MapMarkerGenericRadius>().Where(x => x.name == "town").ToList())
             {
                 mm?.Kill();
@@ -1880,6 +1880,7 @@ namespace Oxide.Plugins
                 marker.radius = 0.2f;
                 marker.Spawn();
                 marker.SendUpdate();
+                marker.SendNetworkUpdate();
             }
         }
 
