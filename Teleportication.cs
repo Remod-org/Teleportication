@@ -1,7 +1,7 @@
 #region License (GPL v2)
 /*
     Teleportication - NextGen Teleportation Plugin
-    Copyright (c) 2020-2023 RFC1920 <desolationoutpostpve@gmail.com>
+    Copyright (c) 2020-2025 RFC1920 <desolationoutpostpve@gmail.com>
 
     This program is free software; you can redistribute it and/or
     modify it under the terms of the GNU General Public License
@@ -21,6 +21,7 @@
 */
 #endregion License (GPL v2)
 // Reference: Mono.Data.Sqlite
+using Mono.Data.Sqlite;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
@@ -32,7 +33,6 @@ using Oxide.Game.Rust.Cui;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using Mono.Data.Sqlite;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -41,38 +41,38 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.5.3")]
+    [Info("Teleportication", "RFC1920", "1.5.4")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
         #region vars
-        private SortedDictionary<ulong, Vector3> SavedPoints = new SortedDictionary<ulong, Vector3>();
-        private SortedDictionary<ulong, ulong> TPRRequests = new SortedDictionary<ulong, ulong>();
-        private SortedDictionary<string, Vector3> monPos  = new SortedDictionary<string, Vector3>();
-        private SortedDictionary<string, Vector3> monSize = new SortedDictionary<string, Vector3>();
-        private SortedDictionary<string, Vector3> cavePos  = new SortedDictionary<string, Vector3>();
+        private SortedDictionary<ulong, Vector3> SavedPoints = new();
+        private SortedDictionary<ulong, ulong> TPRRequests = new();
+        private SortedDictionary<string, Vector3> monPos = new();
+        private SortedDictionary<string, Vector3> monSize = new();
+        private SortedDictionary<string, Vector3> cavePos = new();
 
-        private readonly Dictionary<ulong, TPTimer> TeleportTimers = new Dictionary<ulong, TPTimer>();
-        private readonly Dictionary<string, Dictionary<ulong, TPTimer>> CooldownTimers = new Dictionary<string, Dictionary<ulong, TPTimer>>();
-        private Dictionary<string, Dictionary<ulong, float>> DailyUsage = new Dictionary<string, Dictionary<ulong, float>>();
-        private readonly Dictionary<ulong, TPRTimer> TPRTimers = new Dictionary<ulong, TPRTimer>();
+        private readonly Dictionary<ulong, TPTimer> TeleportTimers = new();
+        private readonly Dictionary<string, Dictionary<ulong, TPTimer>> CooldownTimers = new();
+        private Dictionary<string, Dictionary<ulong, float>> DailyUsage = new();
+        private readonly Dictionary<ulong, TPRTimer> TPRTimers = new();
         private int dateInt;
 
         //private Coroutine townPositionsC;
-        private List<Vector3> townPositions = new List<Vector3>();
+        //private List<Vector3> townPositions = new();
 
         private bool newsave;
         private const string HGUI = "gui.homes";
 
         private const string permTP_Use = "teleportication.use";
-        private const string permTP_TP  = "teleportication.tp";
-        private const string permTP_OTHERS  = "teleportication.tpothers";
+        private const string permTP_TP = "teleportication.tp";
+        private const string permTP_OTHERS = "teleportication.tpothers";
         private const string permTP_TPB = "teleportication.tpb";
         private const string permTP_TPR = "teleportication.tpr";
         private const string permTP_Town = "teleportication.town";
         private const string permTP_Bandit = "teleportication.bandit";
         private const string permTP_Outpost = "teleportication.outpost";
-        private const string permTP_Tunnel  = "teleportication.tunnel";
+        private const string permTP_Tunnel = "teleportication.tunnel";
         private const string permTP_Admin = "teleportication.admin";
 
         private ConfigData configData;
@@ -131,7 +131,7 @@ namespace Oxide.Plugins
                 {
                     foreach (KeyValuePair<string, VIPSetting> x in ttype.Value.VIPSettings)
                     {
-                        if (!permission.PermissionExists(x.Key,this)) permission.RegisterPermission(x.Key, this);
+                        if (!permission.PermissionExists(x.Key, this)) permission.RegisterPermission(x.Key, this);
                     }
                 }
             }
@@ -152,7 +152,8 @@ namespace Oxide.Plugins
                 if (target.Count > 0)
                 {
                     Vector3 townPos = StringToVector3(target[0]);
-                    SetTownMapMarker(townPos);
+                    //Puts($"Town position: {townPos}");
+                    NextTick(() => SetTownMapMarker(townPos));
                 }
             }
             MidnightDetect(true);
@@ -202,8 +203,8 @@ namespace Oxide.Plugins
             permission.RegisterPermission(permTP_Use, this);
             permission.RegisterPermission(permTP_TPB, this);
             permission.RegisterPermission(permTP_TPR, this);
-            permission.RegisterPermission(permTP_TP,  this);
-            permission.RegisterPermission(permTP_OTHERS,  this);
+            permission.RegisterPermission(permTP_TP, this);
+            permission.RegisterPermission(permTP_OTHERS, this);
             permission.RegisterPermission(permTP_Town, this);
             permission.RegisterPermission(permTP_Bandit, this);
             permission.RegisterPermission(permTP_Outpost, this);
@@ -215,7 +216,7 @@ namespace Oxide.Plugins
         {
             foreach (BasePlayer player in BasePlayer.activePlayerList)
             {
-                if (player ==  null) continue;
+                if (player == null) continue;
                 CuiHelper.DestroyUi(player, HGUI);
             }
             sqlConnection.Close();
@@ -301,6 +302,10 @@ namespace Oxide.Plugins
                 ["tpcancelled"] = "Teleport cancelled!",
                 ["tprself"] = "You cannot tpr to yourself.",
                 ["playernotfound"] = "Source or target player not found",
+                ["cooldown"] = "Cooldown:",
+                ["cooldowns"] = "COOLDOWNS:",
+                ["playerhomes"] = "PLAYER HOMES:",
+                ["remaining"] = "Remaining:",
                 ["tprnotify"] = "{0} has requested to be teleported to you.\nType /tpa to accept.",
                 ["tpanotify"] = "{0} has accepted your teleport request.  You will be teleported in {1} second(s).",
                 ["tprreject"] = "{0} rejected your request.  Or, the request timed out."
@@ -312,10 +317,10 @@ namespace Oxide.Plugins
         private void LoadData()
         {
             bool found = false;
-            using (SqliteConnection c = new SqliteConnection(connStr))
+            using (SqliteConnection c = new(connStr))
             {
                 c.Open();
-                using (SqliteCommand r = new SqliteCommand("SELECT name FROM sqlite_master WHERE type='table' AND name='rtp_server'", c))
+                using (SqliteCommand r = new("SELECT name FROM sqlite_master WHERE type='table' AND name='rtp_server'", c))
                 using (SqliteDataReader rtbl = r.ExecuteReader())
                 {
                     while (rtbl.Read()) { found = true; }
@@ -521,7 +526,7 @@ namespace Oxide.Plugins
                             try
                             {
                                 // Get town location from config
-                                DataFileSystem d = new DataFileSystem(Interface.GetMod().ConfigDirectory);
+                                DataFileSystem d = new(Interface.GetMod().ConfigDirectory);
                                 string[] x = d.GetFiles("", $"{otpplug}.json");
                                 OtherConfigData otpcfg = d.GetFile(otpplug).ReadObject<OtherConfigData>();
                                 string townloc = otpcfg.Town.Location.Replace("  ", "").Replace(" ", ",");
@@ -554,10 +559,10 @@ namespace Oxide.Plugins
                         Message(iplayer, Title);
                         Message(iplayer, "locations");
                         string loc = null;
-                        using (SqliteConnection c = new SqliteConnection(connStr))
+                        using (SqliteConnection c = new(connStr))
                         {
                             c.Open();
-                            using (SqliteCommand q = new SqliteCommand("SELECT name, location FROM rtp_server ORDER BY name", c))
+                            using (SqliteCommand q = new("SELECT name, location FROM rtp_server ORDER BY name", c))
                             using (SqliteDataReader svr = q.ExecuteReader())
                             {
                                 while (svr.Read())
@@ -594,7 +599,7 @@ namespace Oxide.Plugins
                     case "playerinfo":
                     case "pinfo":
                         Message(iplayer, $"{Title} Player Information");
-                        Message(iplayer, "COOLDOWNS:");
+                        Message(iplayer, Lang("cooldowns"));
                         string output = "";
                         foreach (KeyValuePair<string, Dictionary<ulong, TPTimer>> cdt in CooldownTimers)
                         {
@@ -602,16 +607,16 @@ namespace Oxide.Plugins
                             foreach (KeyValuePair<ulong, TPTimer> tinfo in cdt.Value)
                             {
                                 output += $"\t\t{BasePlayer.FindAwakeOrSleeping(tinfo.Key.ToString()).displayName}, "
-                                    + $"Cooldown: {tinfo.Value.cooldown}, "
-                                    + $"Remaining: {Math.Abs(Time.realtimeSinceStartup - tinfo.Value.start - tinfo.Value.cooldown)}\n";
+                                    + $"{Lang("cooldown")} {tinfo.Value.cooldown}, "
+                                    + $"{Lang("remaining")} {Math.Abs(Time.realtimeSinceStartup - tinfo.Value.start - tinfo.Value.cooldown)}\n";
                             }
                         }
-                        output += "\nPLAYER HOMES:\n";
-                        Dictionary<string, int> pCount = new Dictionary<string, int>();
-                        using (SqliteConnection c = new SqliteConnection(connStr))
+                        output += $"\n{Lang("playerhomes")}\n";
+                        Dictionary<string, int> pCount = new();
+                        using (SqliteConnection c = new(connStr))
                         {
                             c.Open();
-                            using (SqliteCommand q = new SqliteCommand("SELECT userid FROM rtp_player ORDER BY userid", c))
+                            using (SqliteCommand q = new("SELECT userid FROM rtp_player ORDER BY userid", c))
                             using (SqliteDataReader svr = q.ExecuteReader())
                             {
                                 while (svr.Read())
@@ -643,7 +648,7 @@ namespace Oxide.Plugins
                         {
                             backupfile = args[1] + ".db";
                         }
-                        using (SqliteConnection c = new SqliteConnection(connStr))
+                        using (SqliteConnection c = new(connStr))
                         {
                             c.Open();
                             string file = $"{Interface.GetMod().DataDirectory}{Path.DirectorySeparatorChar}{Name}{Path.DirectorySeparatorChar}{backupfile}";
@@ -678,14 +683,14 @@ namespace Oxide.Plugins
                 // List homes
                 string available = Lang("homesavail") + "\n";
                 bool hashomes = false;
-                List<Vector3> allhomes = new List<Vector3>();
+                List<Vector3> allhomes = new();
                 string firstHome = string.Empty;
-                using (SqliteConnection c = new SqliteConnection(connStr))
+                using (SqliteConnection c = new(connStr))
                 {
                     c.Open();
                     string qh = $"SELECT name, location, lastused FROM rtp_player WHERE userid='{player.userID}'";
                     //Puts(qh);
-                    using (SqliteCommand q = new SqliteCommand(qh, c))
+                    using (SqliteCommand q = new(qh, c))
                     using (SqliteDataReader home = q.ExecuteReader())
                     {
                         while (home.Read())
@@ -752,10 +757,10 @@ namespace Oxide.Plugins
                 {
                     string available = Lang("homesavailfor", null, RemoveSpecialCharacters(target.displayName)) + "\n";
                     bool hashomes = false;
-                    using (SqliteConnection c = new SqliteConnection(connStr))
+                    using (SqliteConnection c = new(connStr))
                     {
                         c.Open();
-                        using (SqliteCommand q = new SqliteCommand($"SELECT name, location, lastused FROM rtp_player WHERE userid='{target.userID}'", c))
+                        using (SqliteCommand q = new($"SELECT name, location, lastused FROM rtp_player WHERE userid='{target.userID}'", c))
                         using (SqliteDataReader home = q.ExecuteReader())
                         {
                             while (home.Read())
@@ -794,12 +799,12 @@ namespace Oxide.Plugins
                 {
                     string home = args[1];
                     bool found = false;
-                    using (SqliteConnection c = new SqliteConnection(connStr))
+                    using (SqliteConnection c = new(connStr))
                     {
                         c.Open();
                         string q = $"SELECT name FROM rtp_player WHERE userid='{player.userID}' AND name='{home}'";
                         DoLog(q);
-                        using (SqliteCommand ct = new SqliteCommand(q, c))
+                        using (SqliteCommand ct = new(q, c))
                         using (SqliteDataReader pl = ct.ExecuteReader())
                         {
                             while (pl.Read())
@@ -1226,7 +1231,7 @@ namespace Oxide.Plugins
 
         private bool SetServerTp(string name, Vector3 location, bool force = false)
         {
-            List<string> reserved = new List<string>() { "bandit", "outpost", "town" };
+            List<string> reserved = new() { "bandit", "outpost", "town" };
             if (reserved.Contains(name) && !force) return false;
 
             List<string> target = QuerySingleStringToList($"SELECT location FROM rtp_server WHERE name='{name}'");
@@ -1242,9 +1247,26 @@ namespace Oxide.Plugins
 
         private bool RemoveServerTp(string name) => UnsetServerTp(name);
 
+        private object GetPlayerTp(BasePlayer player)
+        {
+            Dictionary<string, Vector3> targets = new();
+            string qh = $"SELECT name, location FROM rtp_player WHERE userid='{player.userID}'";
+            using SqliteConnection c = new(connStr);
+            c.Open();
+            using SqliteCommand q = new(qh, c);
+            using SqliteDataReader home = q.ExecuteReader();
+            while (home.Read())
+            {
+                string nom = !home.IsDBNull(0) ? home.GetString(0) : "";
+                string loc = !home.IsDBNull(1) ? home.GetString(1) : "";
+                targets.Add(nom, StringToVector3(loc));
+            }
+            return targets;
+        }
+
         private bool UnsetServerTp(string name)
         {
-            List<string> reserved = new List<string>() { "bandit", "outpost", "town" };
+            List<string> reserved = new() { "bandit", "outpost", "town" };
             if (reserved.Contains(name)) return false;
 
             List<string> target = QuerySingleStringToList($"SELECT location FROM rtp_server WHERE name='{name}')");
@@ -1254,24 +1276,43 @@ namespace Oxide.Plugins
             return true;
         }
 
+        private object GetAllServerTp()
+        {
+            Dictionary<string, Vector3> targets = new();
+            using (SqliteConnection c = new(connStr))
+            {
+                c.Open();
+                const string qh = "SELECT DISTINCT name, location FROM rtp_server";
+                using SqliteCommand q = new(qh, c);
+                using SqliteDataReader tgts = q.ExecuteReader();
+                while (tgts.Read())
+                {
+                    string nom = !tgts.IsDBNull(0) ? tgts.GetString(0) : "";
+                    string loc = !tgts.IsDBNull(1) ? tgts.GetString(1) : "";
+                    targets.Add(nom, StringToVector3(loc));
+                }
+            }
+            return targets;
+        }
+
         private object GetServerTp(string name = "")
         {
             if (name.Length > 0)
             {
-                List<string> target = QuerySingleStringToList($"SELECT location FROM rtp_server WHERE name='{name}'");
+                List<string> target = QuerySingleStringToList($"SELECT DISTINCT location FROM rtp_server WHERE name='{name}'");
                 if (target.Count == 0) return false;
 
                 Vector3 pos = StringToVector3(target[0]);
-                if (pos != default(Vector3) && pos != Vector3.zero) return pos;
+                if (pos != default && pos != Vector3.zero) return pos;
             }
 
-            Dictionary<string, Vector3> targets = new Dictionary<string, Vector3>();
+            Dictionary<string, Vector3> targets = new();
 
-            using (SqliteConnection c = new SqliteConnection(connStr))
+            using (SqliteConnection c = new(connStr))
             {
                 c.Open();
-                const string qh = "SELECT name, location, FROM rtp_server";
-                using (SqliteCommand q = new SqliteCommand(qh, c))
+                const string qh = "SELECT DISTINCT name, location FROM rtp_server";
+                using (SqliteCommand q = new(qh, c))
                 using (SqliteDataReader tgts = q.ExecuteReader())
                 {
                     while (tgts.Read())
@@ -1642,7 +1683,7 @@ namespace Oxide.Plugins
             {
                 Vector3 center = entity.CenterPoint();
 
-                List<BaseEntity> ents = new List<BaseEntity>();
+                List<BaseEntity> ents = new();
                 Vis.Entities(center, 1.5f, ents);
                 foreach (BaseEntity wall in ents)
                 {
@@ -1739,7 +1780,7 @@ namespace Oxide.Plugins
         // Check a location to verify that it is not obstructed by construction.
         public bool Obstructed(Vector3 location)
         {
-            List<BaseEntity> ents = new List<BaseEntity>();
+            List<BaseEntity> ents = new();
             Vis.Entities(location, 1, ents, blockLayer);
             foreach (BaseEntity ent in ents)
             {
@@ -1754,7 +1795,7 @@ namespace Oxide.Plugins
             {
                 return true;
             }
-            List<BaseEntity> ents = new List<BaseEntity>();
+            List<BaseEntity> ents = new();
             Vis.Entities(player.transform.position, 50, ents);
             foreach (BaseEntity entity in ents)
             {
@@ -1889,7 +1930,7 @@ namespace Oxide.Plugins
             return Regex.Replace(str, "[^a-zA-Z0-9_.]+", "", RegexOptions.Compiled);
         }
 
-        private static BasePlayer FindPlayerByName(string name, bool includeSleepers=false)
+        private static BasePlayer FindPlayerByName(string name, bool includeSleepers = false)
         {
             if (includeSleepers)
             {
@@ -1916,7 +1957,7 @@ namespace Oxide.Plugins
             return null;
         }
 
-        private static BasePlayer FindPlayerById(ulong userid, bool includeSleepers=false)
+        private static BasePlayer FindPlayerById(ulong userid, bool includeSleepers = false)
         {
             if (includeSleepers)
             {
@@ -1995,13 +2036,13 @@ namespace Oxide.Plugins
         {
             if (GridAPI != null)
             {
-                string[] g = (string[]) GridAPI.CallHook("GetGrid", position);
+                string[] g = (string[])GridAPI.CallHook("GetGrid", position);
                 return string.Concat(g);
             }
             else
             {
                 // From GrTeleport for display only
-                Vector2 r = new Vector2((World.Size / 2) + position.x, (World.Size / 2) + position.z);
+                Vector2 r = new((World.Size / 2) + position.x, (World.Size / 2) + position.z);
                 float x = Mathf.Floor(r.x / 146.3f) % 26;
                 float z = Mathf.Floor(World.Size / 146.3f) - Mathf.Floor(r.y / 146.3f);
 
@@ -2015,6 +2056,7 @@ namespace Oxide.Plugins
 
             foreach (MonumentInfo monument in UnityEngine.Object.FindObjectsOfType<MonumentInfo>())
             {
+                Puts($"Found monument: {monument?.name}");
                 if (monument.name.Contains("power_sub")) continue;
                 if (monument.name.Contains("ice_lake")) continue;
                 float realWidth = 0f;
@@ -2072,7 +2114,7 @@ namespace Oxide.Plugins
                     DoLog($"  Adding Outpost target pos: {monument.transform.position}, size: {extents}");
                     Vector3 mt = Vector3.zero;
                     Vector3 bbq = Vector3.zero;
-                    List<BaseEntity> ents = new List<BaseEntity>();
+                    List<BaseEntity> ents = new();
                     Vis.Entities(monument.transform.position, 50, ents);
                     foreach (BaseEntity entity in ents)
                     {
@@ -2094,7 +2136,7 @@ namespace Oxide.Plugins
                 else if (monument.name.Contains("bandit") && configData.Options.AutoGenBandit)
                 {
                     DoLog($"  Adding BanditTown target pos: {monument.transform.position}, size: {extents}");
-                    List<BaseEntity> ents = new List<BaseEntity>();
+                    List<BaseEntity> ents = new();
                     Vis.Entities(monument.transform.position, 50, ents);
                     foreach (BaseEntity entity in ents)
                     {
@@ -2133,7 +2175,7 @@ namespace Oxide.Plugins
 
         public string GetClosest(Vector3 startPosition)
         {
-            Vector3 bestTarget = new Vector3();
+            Vector3 bestTarget = new();
             float closestDistanceSqr = Mathf.Infinity;
 
             foreach (Vector3 potentialTarget in monPos.Values)
@@ -2154,10 +2196,10 @@ namespace Oxide.Plugins
 
         private bool RunUpdateQuery(string query)
         {
-            using (SqliteConnection c = new SqliteConnection(connStr))
+            using (SqliteConnection c = new(connStr))
             {
                 c.Open();
-                using (SqliteCommand cmd = new SqliteCommand(query, c))
+                using (SqliteCommand cmd = new(query, c))
                 {
                     cmd.ExecuteNonQuery();
                 }
@@ -2168,11 +2210,11 @@ namespace Oxide.Plugins
         private List<string> QuerySingleStringToList(string query)
         {
             DoLog($"QuerySingleStringToList:\n  {query}");
-            List<string> output = new List<string>();
-            using (SqliteConnection c = new SqliteConnection(connStr))
+            List<string> output = new();
+            using (SqliteConnection c = new(connStr))
             {
                 c.Open();
-                using (SqliteCommand q = new SqliteCommand(query, c))
+                using (SqliteCommand q = new(query, c))
                 using (SqliteDataReader rtbl = q.ExecuteReader())
                 {
                     while (rtbl.Read())
@@ -2218,7 +2260,7 @@ namespace Oxide.Plugins
             if (configData.Options.useClans && Clans != null)
             {
                 string playerclan = (string)Clans?.CallHook("GetClanOf", playerid);
-                string ownerclan  = (string)Clans?.CallHook("GetClanOf", ownerid);
+                string ownerclan = (string)Clans?.CallHook("GetClanOf", ownerid);
                 if (playerclan == ownerclan && playerclan != null && ownerclan != null)
                 {
                     return true;
@@ -2550,7 +2592,7 @@ namespace Oxide.Plugins
             SavedPoints[player.userID] = player.transform.position;
         }
 
-        private void MidnightDetect(bool startup=false)
+        private void MidnightDetect(bool startup = false)
         {
             DateTime dt = TOD_Sky.Instance.Cycle.DateTime;
             if (startup)
@@ -2586,10 +2628,10 @@ namespace Oxide.Plugins
             timer.Once(60f, () => MidnightDetect());
         }
 
-//        public void TeleportToPlayer(BasePlayer player, BasePlayer target) => Teleport(player, target.transform.position);
-//        public void TeleportToPosition(BasePlayer player, float x, float y, float z) => Teleport(player, new Vector3(x, y, z));
+        //        public void TeleportToPlayer(BasePlayer player, BasePlayer target) => Teleport(player, target.transform.position);
+        //        public void TeleportToPosition(BasePlayer player, float x, float y, float z) => Teleport(player, new Vector3(x, y, z));
 
-        public void Teleport(BasePlayer player, Vector3 position, string type="")
+        public void Teleport(BasePlayer player, Vector3 position, string type = "")
         {
             SaveLocation(player);
             HandleTimer(player.userID, type);
@@ -2620,28 +2662,34 @@ namespace Oxide.Plugins
         #endregion
 
         #region config
+        private object ConfigAllRead(string pluginName)
+        {
+            if (pluginName != Name.ToLower()) return "";
+            return configData;
+        }
+
         private void LoadConfigVariables()
         {
             configData = Config.ReadObject<ConfigData>();
 
             if (configData.Version < new VersionNumber(1, 1, 18))
             {
-                using (SqliteConnection c = new SqliteConnection(connStr))
+                using (SqliteConnection c = new(connStr))
                 {
                     c.Open();
-                    using (SqliteCommand ct = new SqliteCommand("CREATE TABLE new_player (userid VARCHAR(255), name VARCHAR(255) NOT NULL, location VARCHAR(255), lastused VARCHAR(255), total INTEGER(32))", c))
+                    using (SqliteCommand ct = new("CREATE TABLE new_player (userid VARCHAR(255), name VARCHAR(255) NOT NULL, location VARCHAR(255), lastused VARCHAR(255), total INTEGER(32))", c))
                     {
                         ct.ExecuteNonQuery();
                     }
-                    using (SqliteCommand ct = new SqliteCommand("INSERT INTO new_player SELECT * FROM rtp_player", c))
+                    using (SqliteCommand ct = new("INSERT INTO new_player SELECT * FROM rtp_player", c))
                     {
                         ct.ExecuteNonQuery();
                     }
-                    using (SqliteCommand ct = new SqliteCommand("DROP TABLE IF EXISTS rtp_player", c))
+                    using (SqliteCommand ct = new("DROP TABLE IF EXISTS rtp_player", c))
                     {
                         ct.ExecuteNonQuery();
                     }
-                    using (SqliteCommand ct = new SqliteCommand("ALTER TABLE new_player RENAME TO rtp_player", c))
+                    using (SqliteCommand ct = new("ALTER TABLE new_player RENAME TO rtp_player", c))
                     {
                         ct.ExecuteNonQuery();
                     }
@@ -2668,7 +2716,7 @@ namespace Oxide.Plugins
         protected override void LoadDefaultConfig()
         {
             Puts("Creating new config file.");
-            ConfigData config = new ConfigData
+            ConfigData config = new()
             {
                 Options = new Options()
                 {
@@ -2769,7 +2817,7 @@ namespace Oxide.Plugins
         private class ConfigData
         {
             public Options Options;
-            public Dictionary<string, CmdOptions> Types = new Dictionary<string, CmdOptions>();
+            public Dictionary<string, CmdOptions> Types = new();
             public VersionNumber Version;
 
             public ConfigData()
@@ -2904,11 +2952,11 @@ namespace Oxide.Plugins
             int col = 0;
             float[] posb = new float[4];
 
-            using (SqliteConnection c = new SqliteConnection(connStr))
+            using (SqliteConnection c = new(connStr))
             {
                 c.Open();
                 string qh = $"SELECT name, location, lastused FROM rtp_player WHERE userid={player.userID}{append}";
-                using (SqliteCommand q = new SqliteCommand(qh, c))
+                using (SqliteCommand q = new(qh, c))
                 using (SqliteDataReader home = q.ExecuteReader())
                 {
                     while (home.Read())
@@ -3124,7 +3172,7 @@ namespace Oxide.Plugins
             public bool InterruptTPOnMonument { get; set; }
             public bool InterruptTPOnMounted { get; set; }
             public bool InterruptTPOnSwimming { get; set; }
-            public bool InterruptAboveWater{ get; set; }
+            public bool InterruptAboveWater { get; set; }
             public bool StrictFoundationCheck { get; set; }
             public float CaveDistanceSmall { get; set; }
             public float CaveDistanceMedium { get; set; }
@@ -3312,7 +3360,7 @@ namespace Oxide.Plugins
         {
             if (drop)
             {
-                SqliteCommand cd = new SqliteCommand("DROP TABLE IF EXISTS rtp_server", sqlConnection);
+                SqliteCommand cd = new("DROP TABLE IF EXISTS rtp_server", sqlConnection);
                 cd.ExecuteNonQuery();
                 cd = new SqliteCommand("CREATE TABLE rtp_server (name VARCHAR(255) NOT NULL UNIQUE, location VARCHAR(255))", sqlConnection);
                 cd.ExecuteNonQuery();
@@ -3324,7 +3372,7 @@ namespace Oxide.Plugins
             }
             else
             {
-                SqliteCommand cd = new SqliteCommand("DELETE FROM rtp_server", sqlConnection);
+                SqliteCommand cd = new("DELETE FROM rtp_server", sqlConnection);
                 cd.ExecuteNonQuery();
                 cd = new SqliteCommand("DELETE FROM rtp_player", sqlConnection);
                 cd.ExecuteNonQuery();
