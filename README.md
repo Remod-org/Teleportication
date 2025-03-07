@@ -197,7 +197,7 @@ The default is "VIPSettings": null, ...  Change them as needed, creating your ow
 
 Despite some similarites, the configuration and data files from other teleport plugins are NOT compatible.
 
-Teleportication uses SQLite for home, town, bandit, and outpost storage.  The file is saved in {oxidedata}/Teleportication/teleportication.db.
+Teleportication uses Sqlite for home, town, bandit, and outpost storage.  The file is saved in {oxidedata}/Teleportication/teleportication.db.
 
 In-memory objects keep track of previous location for tpb, pending tpr/tpa, etc.  This could change as development progresses.
 
