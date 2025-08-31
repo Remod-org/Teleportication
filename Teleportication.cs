@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.5.5")]
+    [Info("Teleportication", "RFC1920", "1.5.6")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -83,7 +83,7 @@ namespace Oxide.Plugins
         private readonly string logfilename = "log";
 
         [PluginReference]
-        private readonly Plugin Friends, Clans, Economics, ServerRewards, GridAPI, NoEscape, Vanish, ZoneManager, BankSystem;//, CopyPaste, LootProtect;
+        private readonly Plugin Friends, Clans, Economics, ServerRewards, GridAPI, NoEscape, Vanish, ZoneManager, BankSystem, SteamFriends;//, CopyPaste, LootProtect;
 
         private readonly int blockLayer = LayerMask.GetMask("Construction");
         private readonly int groundLayer = LayerMask.GetMask("Terrain", "World");
@@ -117,6 +117,7 @@ namespace Oxide.Plugins
         #region init
         private void OnServerInitialized()
         {
+            Puts("HERE!");
             sqlConnection = new SQLiteConnection(connStr);
             sqlConnection.Open();
 
@@ -146,15 +147,12 @@ namespace Oxide.Plugins
 
             FindMonuments();
 
-            if (configData.Options.AddTownMapMarker)
+            List<string> target = QuerySingleStringToList("SELECT location FROM rtp_server WHERE name='town'");
+            if (target.Count > 0)
             {
-                List<string> target = QuerySingleStringToList("SELECT location FROM rtp_server WHERE name='town'");
-                if (target.Count > 0)
-                {
-                    Vector3 townPos = StringToVector3(target[0]);
-                    //Puts($"Town position: {townPos}");
-                    NextTick(() => SetTownMapMarker(townPos));
-                }
+                Vector3 townPos = StringToVector3(target[0]);
+                //Puts($"Town position: {townPos}");
+                NextTick(() => SetTownMapMarker(townPos));
             }
             MidnightDetect(true);
         }
@@ -313,6 +311,17 @@ namespace Oxide.Plugins
         }
 
         private void OnNewSave() => newsave = true;
+
+        //private object OnPlayerRespawn(BasePlayer player)
+        //{
+        //    List<string> target = QuerySingleStringToList($"SELECT location FROM rtp_server WHERE name='outpost'");
+        //    if (target[0]?.Length > 0)
+        //    {
+        //        Vector3 position = StringToVector3(target[0]);
+        //        return new BasePlayer.SpawnPoint() { pos = position, rot = new Quaternion(0, 0, 0, 1) };
+        //    }
+        //    return null;
+        //}
 
         private void LoadData()
         {
@@ -1908,16 +1917,17 @@ namespace Oxide.Plugins
             DoLog($"Setting town map marker at {position}");
             foreach (MapMarkerGenericRadius mm in UnityEngine.Object.FindObjectsOfType<MapMarkerGenericRadius>().Where(x => x.name == "town").ToList())
             {
+                Puts("Killing old marker");
                 mm?.Kill();
             }
-            MapMarkerGenericRadius marker = GameManager.server.CreateEntity("assets/prefabs/tools/map/genericradiusmarker.prefab", position) as MapMarkerGenericRadius;
+            MapMarkerGenericRadius marker = GameManager.server.CreateEntity(StringPool.Get(2849728229), position) as MapMarkerGenericRadius;
             if (marker != null)
             {
                 marker.alpha = 0.6f;
                 marker.color1 = Color.green;
                 marker.color2 = Color.white;
                 marker.name = "town";
-                marker.appType = ProtoBuf.AppMarkerType.Player;
+                //marker.appType = ProtoBuf.AppMarkerType.Player;
                 marker.radius = 0.2f;
                 marker.Spawn();
                 marker.SendUpdate();
@@ -2278,6 +2288,15 @@ namespace Oxide.Plugins
                     {
                         return true;
                     }
+                }
+            }
+            if (configData.Options.useSteam && SteamFriends != null)
+            {
+                List<string> steamFriends = (List<string>)SteamFriends?.CallHook("GetFriends", playerid);
+                if (steamFriends.Contains(playerid.ToString()))
+                {
+                    DoLog($"Steam reports that {playerid} and {ownerid} are Steam friends.");
+                    return true;
                 }
             }
             return false;
@@ -2840,6 +2859,7 @@ namespace Oxide.Plugins
             public bool debug;
             public bool logtofile;
             public bool useClans;
+            public bool useSteam;
             public bool useFriends;
             public bool useTeams;
             public bool useEconomics;
@@ -3222,6 +3242,7 @@ namespace Oxide.Plugins
             public int LocationRadius { get; set; }
             public bool ForceOnTopOfFoundation { get; set; }
             public bool CheckFoundationForOwner { get; set; }
+            public bool UseSteam { get; set; }
             public bool UseFriends { get; set; }
             public bool UseClans { get; set; }
             public bool UseTeams { get; set; }

@@ -1,7 +1,7 @@
 ## Teleportication
 Nextgen Teleport plugin for Rust
 
-Uses Friends, Clans, Rust teams, Economics, ServerRewards, GridAPI, NoEscape, Vanish, CopyPaste, ZoneManager, LootProtect
+Uses Friends, Clans, Rust teams, Economics, ServerRewards, GridAPI, NoEscape, Vanish, ZoneManager, SteamFriends
 
 A lot of the familiar commands from older teleport plugins are still there, with some exceptions.  This is where the similarites end.
 
@@ -52,6 +52,7 @@ Note that "set" can be changed by config, e.g. for /home set, /town set...
     "debug": false,
     "logtofile": false,
     "useClans": false,
+    "useSteam": false,
     "useFriends": false,
     "useEconoics": false,
     "useServerRewards": false,
@@ -118,6 +119,7 @@ Note that "set" can be changed by config, e.g. for /home set, /town set...
 
 #### Global Options
     - `useClans` -- Use various Clans plugins for determining relationships
+    - `useSteam` -- Use the SteamFriends plugin for determining relationships based on Steam friends
     - `useFriends` -- Use various Friends plugins for determining relationships
     - `useEconomics` -- Use the Economics plugin to allow for player bypass of cooldowns.
     - `useServerRewards` -- Use the ServerRewards plugin to allow for player bypass of cooldowns.
