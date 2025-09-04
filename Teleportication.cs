@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.5.6")]
+    [Info("Teleportication", "RFC1920", "1.5.7")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -2665,7 +2665,7 @@ namespace Oxide.Plugins
             player.Teleport(position);
             player.UpdateNetworkGroup();
             player.StartSleeping();
-            player.SendNetworkUpdateImmediate(false);
+            player.SendNetworkUpdateImmediate();
 
             if (player.net?.connection != null) player.ClientRPC(RpcTarget.Player("StartLoading", player));
         }
