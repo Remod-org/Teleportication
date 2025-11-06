@@ -41,7 +41,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.5.7")]
+    [Info("Teleportication", "RFC1920", "1.5.8")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -117,7 +117,6 @@ namespace Oxide.Plugins
         #region init
         private void OnServerInitialized()
         {
-            Puts("HERE!");
             sqlConnection = new SQLiteConnection(connStr);
             sqlConnection.Open();
 
@@ -1767,7 +1766,7 @@ namespace Oxide.Plugins
                 DoLog("Building priv not null, checking authorizedPlayers...");
                 foreach (BuildingPrivlidge priv in building.buildingPrivileges)
                 {
-                    foreach (ulong auth in priv.authorizedPlayers.Select(x => x.userid).ToArray())
+                    foreach (ulong auth in priv.authorizedPlayers)
                     {
                         // If the player is authed, or is a friend of the authed player, return true if HonorRelationships is enabled.
                         // This should avoid TP to a home location where building priv has been lost (PVP).
