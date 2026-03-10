@@ -36,12 +36,13 @@ using System.Data.SQLite;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Teleportication", "RFC1920", "1.5.8")]
+    [Info("Teleportication", "RFC1920", "1.5.9")]
     [Description("NextGen Teleportation plugin")]
     internal class Teleportication : RustPlugin
     {
@@ -223,6 +224,15 @@ namespace Oxide.Plugins
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
+                ["adminhelp"] = "/tpadmin wipe | backup -- Wipe all home and server location data, or backup the database",
+                ["homehelp"] = "/home set NAME | list | remove | NAME -- Set a home, list all homes, remove a home, or teleport to NAMEd home",
+                ["townhelp"] = "/town -- Teleport to town, if set",
+                ["bandithelp"] = "/bandit -- Teleport to Bandit Camp",
+                ["outposthelp"] = "/outpost -- Teleport to Outpost/Compound",
+                ["tpahelp"] = "/tpa -- Accept player to player TP request",
+                ["tpbhelp"] = "/tpb -- Return to previous location",
+                ["tpchelp"] = "/tpc -- Cancel teleport",
+                ["tprhelp"] = "/tpr -- Request teleport to player",
                 ["serverinfo"] = "Server Info - ",
                 ["locations"] = "Locations:",
                 ["flags"] = "Flags:",
@@ -2005,6 +2015,41 @@ namespace Oxide.Plugins
                 default:
                     return false;
             }
+        }
+
+        [HookMethod("SendHelpText")]
+        private void SendHelpText(BasePlayer player)
+        {
+            StringBuilder sb = new();
+            sb.Append("<color=#05eb59>").Append(Name).AppendLine();
+            if (permission.UserHasPermission(player.userID.ToString(), permTP_Admin))
+            {
+                sb.Append("<color=#ffffff>").Append("  . ").Append(Lang("adminhelp")).Append("\n");
+            }
+            if (permission.UserHasPermission(player.userID.ToString(), permTP_Use))
+            {
+                sb.Append("<color=#ffffff>").Append("  . ").Append(Lang("homehelp")).Append("\n");
+                sb.Append("<color=#ffffff>").Append("  . ").Append(Lang("tpahelp")).Append("\n");
+                sb.Append("<color=#ffffff>").Append("  . ").Append(Lang("tpbhelp")).Append("\n");
+                sb.Append("<color=#ffffff>").Append("  . ").Append(Lang("tpchelp")).Append("\n");
+            }
+            if (permission.UserHasPermission(player.userID.ToString(), permTP_TPR))
+            {
+                sb.Append("<color=#ffffff>").Append("  . ").Append(Lang("tprhelp")).Append("\n");
+            }
+            if (permission.UserHasPermission(player.userID.ToString(), permTP_Bandit))
+            {
+                sb.Append("<color=#ffffff>").Append("  . ").Append(Lang("bandithelp")).Append("\n");
+            }
+            if (permission.UserHasPermission(player.userID.ToString(), permTP_Outpost))
+            {
+                sb.Append("<color=#ffffff>").Append("  . ").Append(Lang("outposthelp")).Append("\n");
+            }
+            if (permission.UserHasPermission(player.userID.ToString(), permTP_Town))
+            {
+                sb.Append("<color=#ffffff>").Append("  . ").Append(Lang("townhelp")).Append("\n");
+            }
+            player.ChatMessage(sb.ToString());
         }
 
         private void DoLog(string message, int indent = 0)
